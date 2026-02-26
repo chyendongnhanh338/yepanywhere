@@ -26,6 +26,8 @@ import { whichCommand } from "../cli-detection.js";
 /** Standard Gemini models (always available) */
 const GEMINI_MODELS: ModelInfo[] = [
   { id: "auto", name: "Auto (recommended)" },
+  { id: "gemini-3-pro", name: "Gemini 3 Pro" },
+  { id: "gemini-3-flash", name: "Gemini 3 Flash" },
   { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
   { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
   { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
@@ -33,10 +35,7 @@ const GEMINI_MODELS: ModelInfo[] = [
 ];
 
 /** Preview models (require previewFeatures enabled in ~/.gemini/settings.json) */
-const GEMINI_PREVIEW_MODELS: ModelInfo[] = [
-  { id: "gemini-3-pro-preview", name: "Gemini 3 Pro (Preview)" },
-  { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (Preview)" },
-];
+const GEMINI_PREVIEW_MODELS: ModelInfo[] = [];
 import { parseGeminiEvent } from "@yep-anywhere/shared";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage } from "../types.js";
