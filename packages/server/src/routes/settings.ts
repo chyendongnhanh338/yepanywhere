@@ -21,6 +21,8 @@ export interface SettingsRoutesDeps {
   onRemoteSessionPersistenceChanged?: (
     enabled: boolean,
   ) => Promise<void> | void;
+  /** Callback to apply Ollama URL changes at runtime */
+  onOllamaUrlChanged?: (url: string | undefined) => void;
 }
 
 function parseExecutorList(rawExecutors: unknown[]): {
@@ -50,6 +52,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     serverSettingsService,
     onAllowedHostsChanged,
     onRemoteSessionPersistenceChanged,
+    onOllamaUrlChanged,
   } = deps;
 
   /**
@@ -118,6 +121,19 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
     }
 
+    // Handle ollamaUrl string (URL, or undefined/null/"" to clear)
+    if ("ollamaUrl" in body) {
+      if (
+        body.ollamaUrl === undefined ||
+        body.ollamaUrl === null ||
+        body.ollamaUrl === ""
+      ) {
+        updates.ollamaUrl = undefined;
+      } else if (typeof body.ollamaUrl === "string") {
+        updates.ollamaUrl = body.ollamaUrl;
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
@@ -135,6 +151,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       await onRemoteSessionPersistenceChanged(
         settings.persistRemoteSessionsToDisk,
       );
+    }
+    if ("ollamaUrl" in updates && onOllamaUrlChanged) {
+      onOllamaUrlChanged(settings.ollamaUrl);
     }
 
     return c.json({ settings });

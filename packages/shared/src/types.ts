@@ -8,6 +8,7 @@
  */
 export type ProviderName =
   | "claude"
+  | "claude-ollama"
   | "codex"
   | "codex-oss"
   | "gemini"
@@ -21,6 +22,7 @@ export type ProviderName =
  */
 export const ALL_PROVIDERS: readonly ProviderName[] = [
   "claude",
+  "claude-ollama",
   "codex",
   "codex-oss",
   "gemini",

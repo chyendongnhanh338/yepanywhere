@@ -48,6 +48,7 @@ import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
+import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import {
   BrowserProfileService,
@@ -397,6 +398,12 @@ async function startServer() {
 
   // Seed allowed hosts middleware from persisted settings
   updateAllowedHosts(serverSettingsService.getSetting("allowedHosts"));
+
+  // Seed Ollama URL from persisted settings
+  const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
+  if (savedOllamaUrl) {
+    ClaudeOllamaProvider.setOllamaUrl(savedOllamaUrl);
+  }
 
   // Log auth status
   if (config.authDisabled) {

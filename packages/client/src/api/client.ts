@@ -2,6 +2,7 @@ import type {
   AgentActivity,
   BrowserProfilesResponse,
   ConnectionsResponse,
+  EmulatorInfo,
   EnrichedRecentEntry,
   FileContentResponse,
   GitStatusInfo,
@@ -920,6 +921,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ html, title }),
     }),
+
+  // Emulator API
+  getEmulators: () => fetchJSON<EmulatorInfo[]>("/emulators"),
+
+  startEmulator: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/emulators/${encodeURIComponent(id)}/start`, {
+      method: "POST",
+    }),
+
+  stopEmulator: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/emulators/${encodeURIComponent(id)}/stop`, {
+      method: "POST",
+    }),
 };
 
 /** Result of testing an SSH connection to a remote executor */
@@ -948,4 +962,6 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Ollama server URL for claude-ollama provider */
+  ollamaUrl?: string;
 }

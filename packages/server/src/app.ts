@@ -58,9 +58,10 @@ import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
+import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
-import { version } from "./routes/version.js";
+import { createVersionRoutes } from "./routes/version.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -293,6 +294,7 @@ export function createApp(options: AppOptions): AppResult {
             }),
         );
       case "claude":
+      case "claude-ollama":
         return getOrCreateReader(
           `claude::${project.sessionDir}${mergedKey}`,
           () =>
@@ -383,7 +385,12 @@ export function createApp(options: AppOptions): AppResult {
   app.route("/health", health);
 
   // Version check (outside /api for easy access)
-  app.route("/api/version", version);
+  app.route(
+    "/api/version",
+    createVersionRoutes({
+      emulatorAvailable: !!options.emulatorBridgeService?.hasBinary(),
+    }),
+  );
 
   // Server info (host/port binding info for Local Access settings)
   if (options.serverHost && options.serverPort) {
@@ -564,6 +571,11 @@ export function createApp(options: AppOptions): AppResult {
           ? (enabled) =>
               options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
           : undefined,
+        onOllamaUrlChanged: (url) => {
+          if (url) {
+            ClaudeOllamaProvider.setOllamaUrl(url);
+          }
+        },
       }),
     );
   }

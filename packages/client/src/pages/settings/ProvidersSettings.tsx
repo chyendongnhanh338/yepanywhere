@@ -1,5 +1,65 @@
+import { useCallback, useEffect, useState } from "react";
 import { useProviders } from "../../hooks/useProviders";
+import { useServerSettings } from "../../hooks/useServerSettings";
 import { getAllProviders } from "../../providers/registry";
+
+function OllamaUrlInput() {
+  const { settings, updateSetting } = useServerSettings();
+  const [url, setUrl] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const serverValue = settings?.ollamaUrl ?? "";
+
+  useEffect(() => {
+    if (settings) {
+      setUrl(settings.ollamaUrl ?? "");
+    }
+  }, [settings]);
+
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await updateSetting("ollamaUrl", url.trim() || undefined);
+      setHasChanges(false);
+    } catch {
+      // Error handled by useServerSettings
+    } finally {
+      setIsSaving(false);
+    }
+  }, [url, updateSetting]);
+
+  return (
+    <div style={{ marginTop: "var(--space-2)", width: "100%" }}>
+      <div
+        style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}
+      >
+        <input
+          type="text"
+          className="settings-input"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setHasChanges(e.target.value !== serverValue);
+          }}
+          placeholder="http://localhost:11434"
+          style={{ flex: 1 }}
+        />
+        <button
+          type="button"
+          className="settings-button"
+          disabled={!hasChanges || isSaving}
+          onClick={handleSave}
+        >
+          {isSaving ? "Saving..." : "Save"}
+        </button>
+      </div>
+      <span className="settings-hint">
+        Ollama server URL. Default: http://localhost:11434
+      </span>
+    </div>
+  );
+}
 
 export function ProvidersSettings() {
   const { providers: serverProviders, loading: providersLoading } =
@@ -48,6 +108,7 @@ export function ProvidersSettings() {
                   ))}
                 </ul>
               )}
+              {provider.id === "claude-ollama" && <OllamaUrlInput />}
             </div>
             {provider.metadata.website && (
               <a

@@ -6,7 +6,7 @@
 
 import type { SDKMessage } from "../../types.js";
 import type { ProviderName } from "../types.js";
-import { MockClaudeProvider } from "./claude.js";
+import { MockClaudeOllamaProvider, MockClaudeProvider } from "./claude.js";
 import { MockCodexOSSProvider, MockCodexProvider } from "./codex.js";
 import { MockGeminiProvider } from "./gemini.js";
 import { MockOpenCodeProvider } from "./opencode.js";
@@ -26,6 +26,8 @@ export function createMockProvider(
   switch (type) {
     case "claude":
       return new MockClaudeProvider(config);
+    case "claude-ollama":
+      return new MockClaudeOllamaProvider(config);
     case "codex":
       return new MockCodexProvider(config);
     case "codex-oss":
@@ -47,6 +49,7 @@ export function createAllMockProviders(
 ): Map<ProviderName, MockAgentProvider> {
   const providers = new Map<ProviderName, MockAgentProvider>();
   providers.set("claude", new MockClaudeProvider(config));
+  providers.set("claude-ollama", new MockClaudeOllamaProvider(config));
   providers.set("codex", new MockCodexProvider(config));
   providers.set("codex-oss", new MockCodexOSSProvider(config));
   providers.set("gemini", new MockGeminiProvider(config));
@@ -69,6 +72,7 @@ export function createMockProviderWithScenarios(
  */
 export const MOCK_PROVIDER_TYPES: ProviderName[] = [
   "claude",
+  "claude-ollama",
   "codex",
   "codex-oss",
   "gemini",

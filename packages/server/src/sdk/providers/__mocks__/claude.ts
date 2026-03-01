@@ -23,6 +23,19 @@ export class MockClaudeProvider extends BaseMockProvider {
 }
 
 /**
+ * Mock Claude + Ollama provider.
+ * Same behavior as MockClaudeProvider with different name.
+ */
+export class MockClaudeOllamaProvider extends BaseMockProvider {
+  readonly name: ProviderName = "claude-ollama";
+  readonly displayName = "Claude + Ollama";
+
+  constructor(config: MockProviderConfig = {}) {
+    super(config);
+  }
+}
+
+/**
  * Create a simple Claude response scenario.
  */
 export function createClaudeScenario(

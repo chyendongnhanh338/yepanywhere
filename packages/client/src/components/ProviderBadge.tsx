@@ -3,6 +3,7 @@ import { MODEL_OPTIONS } from "../hooks/useModelSettings";
 
 const PROVIDER_COLORS: Record<ProviderName, string> = {
   claude: "var(--provider-claude)", // Claude orange
+  "claude-ollama": "var(--provider-claude)", // Same as Claude (uses Claude SDK)
   codex: "var(--provider-codex)", // OpenAI green
   "codex-oss": "var(--provider-codex)", // OpenAI green (same as codex)
   gemini: "var(--provider-gemini)", // Google blue
@@ -12,6 +13,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   claude: "Claude",
+  "claude-ollama": "Ollama",
   codex: "Codex",
   "codex-oss": "CodexOSS",
   gemini: "Gemini",

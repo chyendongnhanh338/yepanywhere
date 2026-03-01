@@ -22,6 +22,8 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
+  ollamaUrl?: string;
 }
 
 /** Default settings */

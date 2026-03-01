@@ -27,6 +27,7 @@ import type {
   AgentProvider,
   AgentSession,
   AuthStatus,
+  ProviderName,
   StartSessionOptions,
 } from "./types.js";
 
@@ -68,8 +69,8 @@ let probePromise: Promise<ModelInfo[]> | null = null;
  * - Tool approval callbacks
  */
 export class ClaudeProvider implements AgentProvider {
-  readonly name = "claude" as const;
-  readonly displayName = "Claude";
+  readonly name: ProviderName = "claude";
+  readonly displayName: string = "Claude";
   readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = true;
@@ -151,6 +152,14 @@ export class ClaudeProvider implements AgentProvider {
   }
 
   /**
+   * Get filtered environment variables for child processes.
+   * Subclasses can override to inject custom env vars (e.g., ANTHROPIC_BASE_URL).
+   */
+  protected getEnv(): Record<string, string | undefined> {
+    return filterEnvForChildProcess();
+  }
+
+  /**
    * Probe for available models by starting a minimal session.
    * The session doesn't send any messages - it just calls supportedModels()
    * on the SDK query and then aborts.
@@ -173,6 +182,7 @@ export class ClaudeProvider implements AgentProvider {
           permissionMode: "default",
           // Don't persist this probe session to disk
           persistSession: false,
+          env: this.getEnv(),
         },
       });
 
@@ -359,7 +369,7 @@ export class ClaudeProvider implements AgentProvider {
           thinking: options.thinking,
           effort: options.effort,
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
-          env: filterEnvForChildProcess(),
+          env: this.getEnv(),
           // Remote execution via SSH
           spawnClaudeCodeProcess,
         },

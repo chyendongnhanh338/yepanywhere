@@ -12,6 +12,7 @@ import type { CanUseTool, SDKMessage, UserMessage } from "../types.js";
  */
 export type ProviderName =
   | "claude"
+  | "claude-ollama"
   | "codex"
   | "codex-oss"
   | "gemini"
