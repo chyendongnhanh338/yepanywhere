@@ -2,7 +2,6 @@ package emulator
 
 import (
 	"context"
-	"log"
 	"sync"
 	"sync/atomic"
 )
@@ -19,6 +18,7 @@ type Frame struct {
 // FrameSource manages the screenshot stream and distributes frames to subscribers.
 type FrameSource struct {
 	client    *Client
+	maxWidth  int // passed to emulator for server-side scaling (0 = native)
 	lastFrame atomic.Pointer[Frame]
 	mu        sync.RWMutex
 	subs      map[int]chan<- *Frame
@@ -27,12 +27,14 @@ type FrameSource struct {
 }
 
 // NewFrameSource starts streaming screenshots and dispatching to subscribers.
-func NewFrameSource(client *Client) *FrameSource {
+// maxWidth tells the emulator to scale frames server-side (0 = native resolution).
+func NewFrameSource(client *Client, maxWidth int) *FrameSource {
 	ctx, cancel := context.WithCancel(context.Background())
 	fs := &FrameSource{
-		client: client,
-		subs:   make(map[int]chan<- *Frame),
-		cancel: cancel,
+		client:   client,
+		maxWidth: maxWidth,
+		subs:     make(map[int]chan<- *Frame),
+		cancel:   cancel,
 	}
 	go fs.run(ctx)
 	return fs
@@ -82,27 +84,11 @@ func (fs *FrameSource) Stop() {
 }
 
 func (fs *FrameSource) run(ctx context.Context) {
-	for {
-		if ctx.Err() != nil {
-			return
-		}
+	frames := fs.client.PollScreenshots(ctx, fs.maxWidth)
 
-		frames, err := fs.client.StreamScreenshots(ctx)
-		if err != nil {
-			log.Printf("frame source: stream error: %v", err)
-			return
-		}
-
-		for frame := range frames {
-			fs.lastFrame.Store(frame)
-			fs.dispatch(frame)
-		}
-
-		// Stream ended (emulator disconnected or context canceled).
-		if ctx.Err() != nil {
-			return
-		}
-		log.Println("frame source: stream ended, reconnecting...")
+	for frame := range frames {
+		fs.lastFrame.Store(frame)
+		fs.dispatch(frame)
 	}
 }
 

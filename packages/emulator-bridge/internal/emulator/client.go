@@ -94,41 +94,38 @@ func (c *Client) SendKey(ctx context.Context, key string) error {
 	return err
 }
 
-// StreamScreenshots opens a streaming gRPC call and sends frames to the returned channel.
-// The channel is closed when the context is canceled or the stream errors.
-func (c *Client) StreamScreenshots(ctx context.Context) (<-chan *Frame, error) {
-	// Merge the caller's context (for cancellation) with the auth metadata.
-	streamCtx := metadata.AppendToOutgoingContext(ctx,
-		"authorization", "Bearer "+c.token)
-
-	stream, err := c.client.StreamScreenshot(streamCtx, &pb.ImageFormat{
+// PollScreenshots polls getScreenshot in a loop and sends frames to the returned channel.
+// This is much faster than StreamScreenshot which only emits on display changes (~0.1 fps).
+// Polling getScreenshot achieves ~17 fps on the emulator's local gRPC.
+// The channel is closed when the context is canceled or a gRPC error occurs.
+func (c *Client) PollScreenshots(ctx context.Context, maxWidth int) <-chan *Frame {
+	imgFmt := &pb.ImageFormat{
 		Format: pb.ImageFormat_RGB888,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("starting screenshot stream: %w", err)
+	}
+	if maxWidth > 0 {
+		imgFmt.Width = uint32(maxWidth)
 	}
 
 	ch := make(chan *Frame, 2)
 	go func() {
 		defer close(ch)
+		var seq uint32
 		for {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
 
-			img, err := stream.Recv()
+			img, err := c.client.GetScreenshot(c.ctx, imgFmt)
 			if err != nil {
 				return
 			}
 
+			seq++
 			frame := &Frame{
-				Data:      img.Image,
-				Width:     int32(img.Format.Width),
-				Height:    int32(img.Format.Height),
-				Seq:       img.Seq,
-				Timestamp: img.TimestampUs,
+				Data:   img.Image,
+				Width:  int32(img.Format.Width),
+				Height: int32(img.Format.Height),
+				Seq:    seq,
 			}
 
 			select {
@@ -139,7 +136,7 @@ func (c *Client) StreamScreenshots(ctx context.Context) (<-chan *Frame, error) {
 		}
 	}()
 
-	return ch, nil
+	return ch
 }
 
 // Close shuts down the gRPC connection.

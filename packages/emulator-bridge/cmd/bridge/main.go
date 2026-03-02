@@ -62,7 +62,7 @@ func runStandalone(addr, emuAddr string, maxWidth, fps int) {
 	}
 	defer h264Enc.Close()
 
-	frameSource := emulator.NewFrameSource(client)
+	frameSource := emulator.NewFrameSource(client, maxWidth)
 	defer frameSource.Stop()
 
 	inputHandler := stream.NewInputHandler(client)
@@ -95,9 +95,26 @@ func runStandalone(addr, emuAddr string, maxWidth, fps int) {
 	}
 }
 
+// monitorParent exits the process if the parent PID changes (parent died).
+// This prevents orphaned sidecar processes when the server is killed.
+func monitorParent() {
+	parentPID := os.Getppid()
+	go func() {
+		for {
+			time.Sleep(2 * time.Second)
+			if os.Getppid() != parentPID {
+				log.Printf("Parent process %d died, shutting down", parentPID)
+				os.Exit(0)
+			}
+		}
+	}()
+}
+
 // runIPC runs in IPC mode: picks a random port, prints handshake to stdout,
 // serves REST endpoints and WebSocket for Yep server communication.
 func runIPC(adbPath string) {
+	monitorParent()
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
@@ -199,7 +216,7 @@ func handleScreenshot(w http.ResponseWriter, r *http.Request, emulatorID string)
 	}
 	defer client.Close()
 
-	frameSource := emulator.NewFrameSource(client)
+	frameSource := emulator.NewFrameSource(client, 360)
 	defer frameSource.Stop()
 
 	id, frames := frameSource.Subscribe()

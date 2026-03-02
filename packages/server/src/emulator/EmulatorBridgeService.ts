@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -119,6 +119,34 @@ export class EmulatorBridgeService {
     }
   }
 
+  /** Kill any stale bridge processes from previous server runs. */
+  private killStaleProcesses(): void {
+    const binaryPath = this.findBinaryPath();
+    if (!binaryPath) return;
+
+    try {
+      // Find all processes matching the bridge binary path
+      const result = execSync(`pgrep -f "${binaryPath}" 2>/dev/null`, {
+        encoding: "utf-8",
+        timeout: 3000,
+      }).trim();
+
+      if (result) {
+        const pids = result.split("\n").filter(Boolean);
+        for (const pid of pids) {
+          try {
+            process.kill(Number(pid), "SIGTERM");
+            console.log(`[EmulatorBridge] Killed stale bridge process ${pid}`);
+          } catch {
+            // Process might have already exited.
+          }
+        }
+      }
+    } catch {
+      // pgrep returns non-zero if no matches — expected.
+    }
+  }
+
   /** Start the sidecar process and establish IPC. */
   private async start(): Promise<void> {
     if (this.starting) return;
@@ -131,6 +159,9 @@ export class EmulatorBridgeService {
           "Emulator bridge binary not found. Build it or download it first.",
         );
       }
+
+      // Kill any orphaned bridge processes from previous server runs.
+      this.killStaleProcesses();
 
       console.log(`[EmulatorBridge] Starting sidecar: ${binaryPath}`);
 
