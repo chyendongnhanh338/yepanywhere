@@ -104,16 +104,17 @@ npx tsx lib/browser-cli.ts close                # Close tab
 
 See `~/code/claw-starter/README.md` for the full CLI reference.
 
-## ChromeOS Screenshot
+## ChromeOS Debugging
 
-Take a screenshot of the Chromebook (useful for verifying the remote UI):
+For Chromebook testing and debugging (screenshots, input, diagnostics), use the chromeos-testbed CLI — NOT the browser control skill (which is for local headless Chromium).
 
 ```bash
-~/code/jstorrent/chromeos-testbed/chromeos-mcp/screenshot.sh              # saves to /tmp/chromebook-screenshot.png
-~/code/jstorrent/chromeos-testbed/chromeos-mcp/screenshot.sh output.png   # saves to output.png
+~/code/chromeos-testbed/bin/chromeos screenshot              # saves screenshot, prints path
+~/code/chromeos-testbed/bin/chromeos screenshot output.png   # saves to output.png
+~/code/chromeos-testbed/bin/chromeos help                    # full command list
 ```
 
-Prints the output path to stdout. Requires SSH access to `chromeroot`. Set `CHROMEBOOK_HOST` env var to override.
+Requires SSH access to `chromeroot`. See `~/code/chromeos-testbed/CLAUDE.md` for details.
 
 ## After Editing Code
 

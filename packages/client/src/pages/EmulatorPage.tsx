@@ -121,6 +121,15 @@ export function EmulatorPage() {
     useEmulators();
   const [activeEmulatorId, setActiveEmulatorId] = useState<string | null>(null);
 
+  // ?auto — auto-connect to the first running emulator
+  useEffect(() => {
+    if (activeEmulatorId || loading) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("auto")) return;
+    const running = emulators.find((e) => e.state === "running");
+    if (running) setActiveEmulatorId(running.id);
+  }, [emulators, loading, activeEmulatorId]);
+
   if (activeEmulatorId) {
     return (
       <div className="main-content-wrapper">
