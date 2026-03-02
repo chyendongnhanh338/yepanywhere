@@ -10,14 +10,15 @@ import (
 	"time"
 )
 
-// DeviceInfo describes a discovered Android emulator.
+// DeviceInfo describes a discovered target device.
 type DeviceInfo struct {
-	ID    string `json:"id"`    // e.g., "emulator-5554"
-	AVD   string `json:"avd"`   // e.g., "Pixel_7"
+	ID    string `json:"id"`    // e.g., "emulator-5554", "R3CN90ABCDE", "chromeos:host"
+	AVD   string `json:"avd"`   // Display label (legacy name kept for client compatibility)
+	Type  string `json:"type"`  // "emulator" | "android" | "chromeos"
 	State string `json:"state"` // "running" or "stopped"
 }
 
-// Discovery handles ADB-based emulator detection.
+// Discovery handles ADB-based device detection.
 type Discovery struct {
 	adbPath string
 }
@@ -27,11 +28,11 @@ func NewDiscovery(adbPath string) *Discovery {
 	return &Discovery{adbPath: adbPath}
 }
 
-// ListDevices returns all known emulator devices (running + stopped AVDs).
+// ListDevices returns all known devices (running ADB targets + stopped AVDs).
 func (d *Discovery) ListDevices() ([]DeviceInfo, error) {
 	running, err := d.listRunning()
 	if err != nil {
-		return nil, fmt.Errorf("listing running emulators: %w", err)
+		return nil, fmt.Errorf("listing running devices: %w", err)
 	}
 
 	avds, err := d.listAVDs()
@@ -43,7 +44,9 @@ func (d *Discovery) ListDevices() ([]DeviceInfo, error) {
 	// Build a set of AVD names that are running.
 	runningAVDs := make(map[string]bool)
 	for _, e := range running {
-		runningAVDs[e.AVD] = true
+		if e.Type == "emulator" {
+			runningAVDs[e.AVD] = true
+		}
 	}
 
 	// Start with running emulators.
@@ -56,6 +59,7 @@ func (d *Discovery) ListDevices() ([]DeviceInfo, error) {
 			result = append(result, DeviceInfo{
 				ID:    "avd-" + avd,
 				AVD:   avd,
+				Type:  "emulator",
 				State: "stopped",
 			})
 		}
@@ -66,6 +70,7 @@ func (d *Discovery) ListDevices() ([]DeviceInfo, error) {
 		result = append(result, DeviceInfo{
 			ID:    "chromeos:" + host,
 			AVD:   "ChromeOS (" + host + ")",
+			Type:  "chromeos",
 			State: "running",
 		})
 	}
@@ -91,15 +96,18 @@ func GRPCAddr(emulatorID string) string {
 	return fmt.Sprintf("localhost:%d", consolePort+3000)
 }
 
-// listRunning queries `adb devices` for running emulator instances.
+// listRunning queries `adb devices` for running devices.
 func (d *Discovery) listRunning() ([]DeviceInfo, error) {
 	out, err := exec.Command(d.adbPath, "devices").Output()
 	if err != nil {
 		return nil, fmt.Errorf("running adb devices: %w", err)
 	}
+	return parseADBDevicesOutput(string(out), d.getAVDName), nil
+}
 
-	var emulators []DeviceInfo
-	for _, line := range strings.Split(string(out), "\n") {
+func parseADBDevicesOutput(output string, getAVDName func(serial string) string) []DeviceInfo {
+	var devices []DeviceInfo
+	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "List of") || strings.HasPrefix(line, "*") {
 			continue
@@ -110,24 +118,30 @@ func (d *Discovery) listRunning() ([]DeviceInfo, error) {
 		}
 		serial := fields[0]
 		status := fields[1]
-
-		// Only include emulators (serial starts with "emulator-")
-		if !strings.HasPrefix(serial, "emulator-") {
-			continue
-		}
 		if status != "device" {
 			continue
 		}
 
-		avdName := d.getAVDName(serial)
-		emulators = append(emulators, DeviceInfo{
+		if strings.HasPrefix(serial, "emulator-") {
+			avdName := getAVDName(serial)
+			devices = append(devices, DeviceInfo{
+				ID:    serial,
+				AVD:   avdName,
+				Type:  "emulator",
+				State: "running",
+			})
+			continue
+		}
+
+		devices = append(devices, DeviceInfo{
 			ID:    serial,
-			AVD:   avdName,
+			AVD:   serial,
+			Type:  "android",
 			State: "running",
 		})
 	}
 
-	return emulators, nil
+	return devices
 }
 
 // listAVDs queries `emulator -list-avds` for available AVD profiles.

@@ -34,13 +34,18 @@ type frameSourceKey struct {
 // a single device connection and polling loop.
 type ResourcePool struct {
 	mu           sync.Mutex
+	adbPath      string
 	clients      map[string]*clientEntry
 	frameSources map[frameSourceKey]*frameSourceEntry
 }
 
 // NewResourcePool creates an empty resource pool.
-func NewResourcePool() *ResourcePool {
+func NewResourcePool(adbPath string) *ResourcePool {
+	if strings.TrimSpace(adbPath) == "" {
+		adbPath = "adb"
+	}
 	return &ResourcePool{
+		adbPath:      adbPath,
 		clients:      make(map[string]*clientEntry),
 		frameSources: make(map[frameSourceKey]*frameSourceEntry),
 	}
@@ -80,10 +85,22 @@ func (rp *ResourcePool) createDeviceLocked(deviceID string) (device.Device, erro
 		return d, nil
 	}
 
-	grpcAddr := GRPCAddr(deviceID)
-	d, err := emulator.NewClient(grpcAddr)
+	if strings.HasPrefix(deviceID, "emulator-") {
+		grpcAddr := GRPCAddr(deviceID)
+		d, err := emulator.NewClient(grpcAddr)
+		if err != nil {
+			return nil, fmt.Errorf("connecting to emulator %s: %w", deviceID, err)
+		}
+		return d, nil
+	}
+
+	if strings.HasPrefix(deviceID, "avd-") {
+		return nil, fmt.Errorf("device %s is not running", deviceID)
+	}
+
+	d, err := device.NewAndroidDevice(deviceID, rp.adbPath)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to emulator %s: %w", deviceID, err)
+		return nil, fmt.Errorf("connecting to android device %s: %w", deviceID, err)
 	}
 	return d, nil
 }

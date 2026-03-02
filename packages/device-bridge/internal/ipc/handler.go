@@ -28,7 +28,7 @@ func NewHandler(adbPath string, stunServers []string, onIdle func()) *Handler {
 	h := &Handler{
 		discovery: NewDiscovery(adbPath),
 	}
-	h.sessions = NewSessionManager(stunServers, h.sendRaw, onIdle)
+	h.sessions = NewSessionManager(adbPath, stunServers, h.sendRaw, onIdle)
 	return h
 }
 
