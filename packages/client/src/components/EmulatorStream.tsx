@@ -77,42 +77,39 @@ export function EmulatorStream({ stream, dataChannel }: EmulatorStreamProps) {
     [canSend, dataChannel],
   );
 
-  // --- Touch handlers ---
+  // --- Touch handlers (native, non-passive to allow preventDefault) ---
 
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent<HTMLVideoElement>) => {
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
       e.preventDefault();
       sendTouches(
         Array.from(e.touches).map((t) => ({
           clientX: t.clientX,
           clientY: t.clientY,
           id: t.identifier,
-          pressure: (t as unknown as { force?: number }).force || 0.5,
+          pressure: t.force || 0.5,
         })),
-        e.currentTarget,
+        video,
       );
-    },
-    [sendTouches],
-  );
+    };
 
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent<HTMLVideoElement>) => {
+    const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       sendTouches(
         Array.from(e.touches).map((t) => ({
           clientX: t.clientX,
           clientY: t.clientY,
           id: t.identifier,
-          pressure: (t as unknown as { force?: number }).force || 0.5,
+          pressure: t.force || 0.5,
         })),
-        e.currentTarget,
+        video,
       );
-    },
-    [sendTouches],
-  );
+    };
 
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent<HTMLVideoElement>) => {
+    const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
       // On touchend, event.touches is empty — use changedTouches with pressure 0 (release)
       sendTouches(
@@ -122,11 +119,23 @@ export function EmulatorStream({ stream, dataChannel }: EmulatorStreamProps) {
           id: t.identifier,
           pressure: 0,
         })),
-        e.currentTarget,
+        video,
       );
-    },
-    [sendTouches],
-  );
+    };
+
+    const opts = { passive: false } as const;
+    video.addEventListener("touchstart", handleTouchStart, opts);
+    video.addEventListener("touchmove", handleTouchMove, opts);
+    video.addEventListener("touchend", handleTouchEnd, opts);
+    video.addEventListener("touchcancel", handleTouchEnd, opts);
+
+    return () => {
+      video.removeEventListener("touchstart", handleTouchStart);
+      video.removeEventListener("touchmove", handleTouchMove);
+      video.removeEventListener("touchend", handleTouchEnd);
+      video.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [sendTouches]);
 
   // --- Mouse handlers (desktop fallback) ---
 
@@ -189,9 +198,6 @@ export function EmulatorStream({ stream, dataChannel }: EmulatorStreamProps) {
       autoPlay
       playsInline
       muted
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

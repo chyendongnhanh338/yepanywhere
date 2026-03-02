@@ -214,7 +214,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       // Ensure WebSocket is connected before sending start message
       const ensureConnected = (
         conn as { ensureConnected?: () => Promise<void> }
-      ).ensureConnected;
+      ).ensureConnected?.bind(conn);
       const sendStart = () => {
         conn.sendMessage?.({
           type: "emulator_stream_start",
