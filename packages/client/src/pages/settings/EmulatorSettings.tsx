@@ -16,8 +16,16 @@ const QUALITY_OPTIONS: EmulatorQuality[] = ["high", "medium", "low"];
 export function EmulatorSettings() {
   const { emulators, loading, error, startEmulator, stopEmulator } =
     useEmulators();
-  const { maxFps, setMaxFps, maxWidth, setMaxWidth, quality, setQuality } =
-    useEmulatorSettings();
+  const {
+    maxFps,
+    setMaxFps,
+    maxWidth,
+    setMaxWidth,
+    quality,
+    setQuality,
+    adaptiveFps,
+    setAdaptiveFps,
+  } = useEmulatorSettings();
 
   return (
     <section className="settings-section">
@@ -54,7 +62,9 @@ export function EmulatorSettings() {
         <div className="settings-item">
           <div className="settings-item-info">
             <strong>Resolution</strong>
-            <p>Maximum stream width in pixels (height scales proportionally).</p>
+            <p>
+              Maximum stream width in pixels (height scales proportionally).
+            </p>
           </div>
           <div className="font-size-selector">
             {EMULATOR_WIDTH_OPTIONS.map((w) => (
@@ -89,6 +99,24 @@ export function EmulatorSettings() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>Adaptive Frame Rate</strong>
+            <p>
+              Automatically reduces frame rate when packet loss is detected, and
+              restores it once the connection recovers.
+            </p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={adaptiveFps}
+              onChange={(e) => setAdaptiveFps(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
         </div>
       </div>
 

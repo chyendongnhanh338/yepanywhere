@@ -34,6 +34,7 @@ type streamSession struct {
 	targetW     int
 	targetH     int
 	pipelineWg  sync.WaitGroup // tracks runPipeline goroutine lifetime
+	fpsCh       chan int        // receives fps_hint values from the client DataChannel
 }
 
 // SessionManager manages multiple concurrent emulator streaming sessions.
@@ -136,11 +137,33 @@ func (sm *SessionManager) StartSession(sessionID, emulatorID string, opts Sessio
 	frameSource := sm.pool.AcquireFrameSource(emulatorID, maxWidth, maxFPS, client)
 	inputHandler := stream.NewInputHandler(client)
 
+	fpsCh := make(chan int, 1)
+
+	// Wrap the DataChannel handler to intercept fps_hint messages before
+	// forwarding everything else to the input handler.
+	type fpshintMsg struct {
+		Type string `json:"type"`
+		FPS  int    `json:"fps"`
+	}
+	onMessage := func(msg []byte) {
+		var peek fpshintMsg
+		if json.Unmarshal(msg, &peek) == nil && peek.Type == "fps_hint" {
+			if peek.FPS > 0 {
+				select {
+				case fpsCh <- peek.FPS:
+				default: // drop if a hint is already pending
+				}
+			}
+			return
+		}
+		inputHandler.HandleMessage(msg)
+	}
+
 	// Create WebRTC peer with trickle ICE.
 	onICE := func(c *stream.ICECandidateJSON) {
 		sm.sendICE(sessionID, c)
 	}
-	peer, err := stream.NewPeerSession(sessionID, sm.stunServers, inputHandler.HandleMessage, onICE)
+	peer, err := stream.NewPeerSession(sessionID, sm.stunServers, onMessage, onICE)
 	if err != nil {
 		sm.pool.ReleaseFrameSource(emulatorID, maxWidth)
 		h264Enc.Close()
@@ -172,6 +195,7 @@ func (sm *SessionManager) StartSession(sessionID, emulatorID string, opts Sessio
 		cancel:      cancel,
 		targetW:     targetW,
 		targetH:     targetH,
+		fpsCh:       fpsCh,
 	}
 	sm.sessions[sessionID] = sess
 	sm.resetIdleTimer()
@@ -335,7 +359,8 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 
 	// Rate-limit encoding to maxFPS. Without this, the polling loop feeds
 	// frames as fast as gRPC delivers (~185 fps), producing excessive bitrate.
-	frameInterval := time.Second / time.Duration(sess.maxFPS)
+	currentFPS := sess.maxFPS
+	frameInterval := time.Second / time.Duration(currentFPS)
 	rateLimiter := time.NewTicker(frameInterval)
 	defer rateLimiter.Stop()
 
@@ -368,6 +393,12 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 			return
 		case <-statsTicker.C:
 			logStats("periodic")
+		case fps := <-sess.fpsCh:
+			if fps != currentFPS {
+				currentFPS = fps
+				rateLimiter.Reset(time.Second / time.Duration(currentFPS))
+				log.Printf("[session %s] fps_hint: adjusted to %d fps", sess.sessionID, currentFPS)
+			}
 		case <-rateLimiter.C:
 			// Wait for a frame (or drain stale ones).
 			var frame *emulator.Frame

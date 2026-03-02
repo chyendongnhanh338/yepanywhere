@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
+import {
+  ADAPTIVE_CHECK_INTERVAL_MS,
+  ADAPTIVE_DEGRADED_FPS,
+  ADAPTIVE_LOSS_THRESHOLD,
+  ADAPTIVE_RECOVERY_SECONDS,
+  type EmulatorFps,
+} from "../hooks/useEmulatorSettings";
 
 interface EmulatorStreamProps {
   /** Remote MediaStream from WebRTC */
@@ -7,6 +14,10 @@ interface EmulatorStreamProps {
   dataChannel: RTCDataChannel | null;
   /** RTCPeerConnection for diagnostics */
   peerConnection: RTCPeerConnection | null;
+  /** Whether to automatically reduce fps on packet loss */
+  adaptiveFps?: boolean;
+  /** The user-configured max fps — used to restore after recovery */
+  configuredFps?: EmulatorFps;
 }
 
 /**
@@ -42,7 +53,13 @@ function clamp01(v: number): number {
  * Video element for emulator stream with touch and mouse event capture.
  * Coordinates are normalized to 0.0-1.0, accounting for object-fit letterboxing.
  */
-export function EmulatorStream({ stream, dataChannel, peerConnection }: EmulatorStreamProps) {
+export function EmulatorStream({
+  stream,
+  dataChannel,
+  peerConnection,
+  adaptiveFps = false,
+  configuredFps = 30,
+}: EmulatorStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Attach stream to video element and monitor health
@@ -78,7 +95,7 @@ export function EmulatorStream({ stream, dataChannel, peerConnection }: Emulator
         if (peerConnection && peerConnection.connectionState !== "closed") {
           try {
             const stats = await peerConnection.getStats();
-            stats.forEach((report) => {
+            for (const report of stats.values()) {
               if (report.type === "inbound-rtp" && report.kind === "video") {
                 const pkts = report.packetsReceived ?? 0;
                 const bytes = report.bytesReceived ?? 0;
@@ -89,8 +106,10 @@ export function EmulatorStream({ stream, dataChannel, peerConnection }: Emulator
                 lastBytesReceived = bytes;
                 statsInfo = ` rtp: +${pktsDelta}pkts/+${bytesDelta}bytes (total=${pkts}, lost=${lost})`;
               }
-            });
-          } catch { /* pc may be closing */ }
+            }
+          } catch {
+            /* pc may be closing */
+          }
         }
 
         if (staleCount === 1) {
@@ -119,13 +138,15 @@ export function EmulatorStream({ stream, dataChannel, peerConnection }: Emulator
         if (peerConnection && peerConnection.connectionState !== "closed") {
           try {
             const stats = await peerConnection.getStats();
-            stats.forEach((report) => {
+            for (const report of stats.values()) {
               if (report.type === "inbound-rtp" && report.kind === "video") {
                 lastPacketsReceived = report.packetsReceived ?? 0;
                 lastBytesReceived = report.bytesReceived ?? 0;
               }
-            });
-          } catch { /* ignore */ }
+            }
+          } catch {
+            /* ignore */
+          }
         }
       }
       lastTime = ct;
@@ -148,7 +169,74 @@ export function EmulatorStream({ stream, dataChannel, peerConnection }: Emulator
       stream.removeEventListener("removetrack", onRemoveTrack);
       stream.removeEventListener("inactive", onInactive);
     };
-  }, [stream]);
+  }, [stream, peerConnection]);
+
+  // Adaptive fps: monitor packet loss and send fps_hint over DataChannel.
+  useEffect(() => {
+    if (!adaptiveFps || !peerConnection || !dataChannel) return;
+
+    let lastPacketsReceived = 0;
+    let lastPacketsLost = 0;
+    let degradedSince: number | null = null;
+
+    const interval = setInterval(async () => {
+      if (
+        peerConnection.connectionState === "closed" ||
+        dataChannel.readyState !== "open"
+      )
+        return;
+
+      let receivedDelta = 0;
+      let lostDelta = 0;
+      try {
+        const stats = await peerConnection.getStats();
+        for (const report of stats.values()) {
+          if (report.type === "inbound-rtp" && report.kind === "video") {
+            const pkts: number = report.packetsReceived ?? 0;
+            const lost: number = report.packetsLost ?? 0;
+            receivedDelta = pkts - lastPacketsReceived;
+            lostDelta = Math.max(0, lost - lastPacketsLost);
+            lastPacketsReceived = pkts;
+            lastPacketsLost = lost;
+          }
+        }
+      } catch {
+        return; // pc may be closing
+      }
+
+      const total = receivedDelta + lostDelta;
+      const lossRate = total > 0 ? lostDelta / total : 0;
+
+      if (lossRate > ADAPTIVE_LOSS_THRESHOLD) {
+        if (!degradedSince) {
+          // First bad interval — drop fps immediately.
+          degradedSince = Date.now();
+          dataChannel.send(
+            JSON.stringify({ type: "fps_hint", fps: ADAPTIVE_DEGRADED_FPS }),
+          );
+          console.warn(
+            `[EmulatorStream] adaptive: loss rate ${(lossRate * 100).toFixed(1)}% > ${ADAPTIVE_LOSS_THRESHOLD * 100}%, dropping to ${ADAPTIVE_DEGRADED_FPS}fps`,
+          );
+        } else {
+          // Still degraded — reset recovery clock.
+          degradedSince = Date.now();
+        }
+      } else if (degradedSince !== null) {
+        const lossFreeMs = Date.now() - degradedSince;
+        if (lossFreeMs >= ADAPTIVE_RECOVERY_SECONDS * 1000) {
+          degradedSince = null;
+          dataChannel.send(
+            JSON.stringify({ type: "fps_hint", fps: configuredFps }),
+          );
+          console.log(
+            `[EmulatorStream] adaptive: loss-free for ${ADAPTIVE_RECOVERY_SECONDS}s, restoring to ${configuredFps}fps`,
+          );
+        }
+      }
+    }, ADAPTIVE_CHECK_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [adaptiveFps, peerConnection, dataChannel, configuredFps]);
 
   const canSend = useCallback(() => {
     return dataChannel && dataChannel.readyState === "open";

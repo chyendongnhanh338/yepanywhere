@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { EmulatorNavButtons } from "../components/EmulatorNavButtons";
 import { EmulatorStream } from "../components/EmulatorStream";
 import { PageHeader } from "../components/PageHeader";
+import { useEmulatorSettings } from "../hooks/useEmulatorSettings";
 import { useEmulatorStream } from "../hooks/useEmulatorStream";
 import { useEmulators } from "../hooks/useEmulators";
 import { useVersion } from "../hooks/useVersion";
@@ -77,6 +78,7 @@ function StreamView({
     connect,
     disconnect,
   } = useEmulatorStream();
+  const { adaptiveFps, maxFps } = useEmulatorSettings();
 
   // Auto-connect when entering stream view
   useEffect(() => {
@@ -109,7 +111,13 @@ function StreamView({
       )}
 
       <div className="emulator-stream-container">
-        <EmulatorStream stream={remoteStream} dataChannel={dataChannel} peerConnection={peerConnection} />
+        <EmulatorStream
+          stream={remoteStream}
+          dataChannel={dataChannel}
+          peerConnection={peerConnection}
+          adaptiveFps={adaptiveFps}
+          configuredFps={maxFps}
+        />
       </div>
 
       <EmulatorNavButtons dataChannel={dataChannel} />

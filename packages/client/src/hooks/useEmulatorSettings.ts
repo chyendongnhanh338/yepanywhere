@@ -22,28 +22,64 @@ export const QUALITY_TO_CRF: Record<EmulatorQuality, number> = {
   low: 35,
 };
 
+// ---------------------------------------------------------------------------
+// Adaptive FPS constants — tune these to adjust adaptation behaviour.
+// ---------------------------------------------------------------------------
+
+/** Packet loss rate (0–1) above which fps is reduced. */
+export const ADAPTIVE_LOSS_THRESHOLD = 0.05; // 5%
+
+/** Frame rate to drop to when loss exceeds the threshold. */
+export const ADAPTIVE_DEGRADED_FPS: EmulatorFps = 15;
+
+/** Seconds of loss-free streaming required before stepping fps back up. */
+export const ADAPTIVE_RECOVERY_SECONDS = 30;
+
+/** How often (ms) the client polls WebRTC stats for adaptation decisions. */
+export const ADAPTIVE_CHECK_INTERVAL_MS = 5000;
+
+// ---------------------------------------------------------------------------
+
 export function getQualityLabel(q: EmulatorQuality): string {
   return QUALITY_LABELS[q];
 }
 
+/** True when the device looks like a small touchscreen (phone/tablet). */
+function isMobile(): boolean {
+  return navigator.maxTouchPoints > 0 && window.innerWidth < 768;
+}
+
 function loadFps(): EmulatorFps {
-  const v = parseInt(localStorage.getItem(UI_KEYS.emulatorMaxFps) ?? "", 10);
-  return (EMULATOR_FPS_OPTIONS as readonly number[]).includes(v)
-    ? (v as EmulatorFps)
-    : 30;
+  const v = Number.parseInt(
+    localStorage.getItem(UI_KEYS.emulatorMaxFps) ?? "",
+    10,
+  );
+  if ((EMULATOR_FPS_OPTIONS as readonly number[]).includes(v))
+    return v as EmulatorFps;
+  return isMobile() ? 15 : 30;
 }
 
 function loadWidth(): EmulatorWidth {
-  const v = parseInt(localStorage.getItem(UI_KEYS.emulatorMaxWidth) ?? "", 10);
-  return (EMULATOR_WIDTH_OPTIONS as readonly number[]).includes(v)
-    ? (v as EmulatorWidth)
-    : 720;
+  const v = Number.parseInt(
+    localStorage.getItem(UI_KEYS.emulatorMaxWidth) ?? "",
+    10,
+  );
+  if ((EMULATOR_WIDTH_OPTIONS as readonly number[]).includes(v))
+    return v as EmulatorWidth;
+  return isMobile() ? 360 : 720;
 }
 
 function loadQuality(): EmulatorQuality {
   const v = localStorage.getItem(UI_KEYS.emulatorQuality);
   if (v === "high" || v === "medium" || v === "low") return v;
-  return "medium";
+  return isMobile() ? "low" : "medium";
+}
+
+function loadAdaptiveFps(): boolean {
+  const v = localStorage.getItem(UI_KEYS.emulatorAdaptiveFps);
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return true; // default on
 }
 
 /** Hook to read and persist emulator stream quality settings. */
@@ -51,6 +87,7 @@ export function useEmulatorSettings() {
   const [maxFps, setMaxFpsState] = useState<EmulatorFps>(loadFps);
   const [maxWidth, setMaxWidthState] = useState<EmulatorWidth>(loadWidth);
   const [quality, setQualityState] = useState<EmulatorQuality>(loadQuality);
+  const [adaptiveFps, setAdaptiveFpsState] = useState<boolean>(loadAdaptiveFps);
 
   const setMaxFps = useCallback((fps: EmulatorFps) => {
     setMaxFpsState(fps);
@@ -67,7 +104,21 @@ export function useEmulatorSettings() {
     localStorage.setItem(UI_KEYS.emulatorQuality, q);
   }, []);
 
-  return { maxFps, setMaxFps, maxWidth, setMaxWidth, quality, setQuality };
+  const setAdaptiveFps = useCallback((v: boolean) => {
+    setAdaptiveFpsState(v);
+    localStorage.setItem(UI_KEYS.emulatorAdaptiveFps, String(v));
+  }, []);
+
+  return {
+    maxFps,
+    setMaxFps,
+    maxWidth,
+    setMaxWidth,
+    quality,
+    setQuality,
+    adaptiveFps,
+    setAdaptiveFps,
+  };
 }
 
 /** Read current emulator settings without React state (for use in connect()). */
@@ -75,6 +126,12 @@ export function getEmulatorSettings(): {
   maxFps: EmulatorFps;
   maxWidth: EmulatorWidth;
   quality: EmulatorQuality;
+  adaptiveFps: boolean;
 } {
-  return { maxFps: loadFps(), maxWidth: loadWidth(), quality: loadQuality() };
+  return {
+    maxFps: loadFps(),
+    maxWidth: loadWidth(),
+    quality: loadQuality(),
+    adaptiveFps: loadAdaptiveFps(),
+  };
 }

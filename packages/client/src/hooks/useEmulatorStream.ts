@@ -316,7 +316,9 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       const sendStart = () => {
         const { maxFps, maxWidth, quality } = getEmulatorSettings();
         const crf = QUALITY_TO_CRF[quality];
-        console.log(`${LOG_PREFIX} [${sid}] sending emulator_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`);
+        console.log(
+          `${LOG_PREFIX} [${sid}] sending emulator_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`,
+        );
         conn.sendMessage?.({
           type: "emulator_stream_start",
           sessionId,
