@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -26,7 +27,8 @@ type PeerSession struct {
 	onInput     func(msg []byte)
 	closed      chan struct{}
 	connected   chan struct{} // closed when ICE reaches "connected" state
-	label       string       // session ID prefix for log messages
+	pli         chan struct{}
+	label       string // session ID prefix for log messages
 }
 
 // NewPeerSession creates a PeerConnection with an h264 video track and a "control" DataChannel.
@@ -60,19 +62,6 @@ func NewPeerSession(label string, stunServers []string, onInput func(msg []byte)
 		return nil, fmt.Errorf("adding video track: %w", err)
 	}
 
-	// Drain incoming RTCP packets. Pion requires this: RTCP packets are
-	// processed by interceptors (NACK, PLI, etc.) before being returned.
-	// Without reading, the RTCP buffer fills up and back-pressures the
-	// RTP write path, causing WriteSample to silently stall after a few seconds.
-	go func() {
-		buf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(buf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
-
 	dc, err := pc.CreateDataChannel("control", nil)
 	if err != nil {
 		pc.Close()
@@ -86,8 +75,36 @@ func NewPeerSession(label string, stunServers []string, onInput func(msg []byte)
 		onInput:     onInput,
 		closed:      make(chan struct{}),
 		connected:   make(chan struct{}),
+		pli:         make(chan struct{}, 8),
 		label:       label,
 	}
+
+	// Drain incoming RTCP packets. Pion requires this: RTCP packets are
+	// processed by interceptors (NACK, PLI, etc.) before being returned.
+	// Without reading, the RTCP buffer fills up and back-pressures the
+	// RTP write path, causing WriteSample to silently stall after a few seconds.
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, _, rtcpErr := rtpSender.Read(buf)
+			if rtcpErr != nil {
+				return
+			}
+			packets, unmarshalErr := rtcp.Unmarshal(buf[:n])
+			if unmarshalErr != nil {
+				continue
+			}
+			for _, packet := range packets {
+				switch packet.(type) {
+				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+					select {
+					case ps.pli <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}
+	}()
 
 	dc.OnOpen(func() {
 		log.Printf("[peer %s] DataChannel '%s' opened", label, dc.Label())
@@ -250,4 +267,9 @@ func (ps *PeerSession) Connected() <-chan struct{} {
 // Done returns a channel that is closed when the peer disconnects.
 func (ps *PeerSession) Done() <-chan struct{} {
 	return ps.closed
+}
+
+// PLI returns a channel that receives events when remote RTCP requests a keyframe.
+func (ps *PeerSession) PLI() <-chan struct{} {
+	return ps.pli
 }

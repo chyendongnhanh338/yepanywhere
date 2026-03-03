@@ -372,6 +372,17 @@ Each phase/slice must be gated by tests before landing.
 3. Add recovery ramp-up logic
 4. Wire PLI from Pion RTCP → `stream_keyframe` command to APK
 
+### Phase 3A (current slice) status
+
+- Added RTCP feedback forwarding from WebRTC (`PLI`/`FIR`) into the sidecar pipeline
+- Added queue-depth congestion detection in the NAL pipeline
+- Implemented progressive bitrate reduction (25% steps, floor at 500 kbps)
+- Implemented keyframe request + non-keyframe drop-until-keyframe behavior under moderate/severe congestion
+- Implemented bitrate recovery ramp (25% per second back toward baseline when queue is stable)
+
+Known gaps in this slice:
+- Resolution/FPS restart fallback under sustained congestion is not yet wired; current behavior uses bitrate + keyframe controls only.
+
 ### Phase 4 — Polish
 
 1. Auto-detect device capability: try `stream_start`, fall back to polling if it fails

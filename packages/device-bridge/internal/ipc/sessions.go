@@ -540,17 +540,77 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 	activityTimer := time.NewTimer(activityTimeout)
 	defer activityTimer.Stop()
 
+	// Progressive adaptation based on queue pressure and RTCP PLI feedback.
+	baseBitrate := estimateAndroidBitrate(sess.targetW, sess.targetH, sess.maxFPS)
+	currentBitrate := baseBitrate
+	const (
+		minBitrate             = 500_000
+		mildQueueDepth         = 2
+		moderateQueueDepth     = 5
+		severeQueueDepth       = 8
+		severeWindow           = 2 * time.Second
+		recoveryWindow         = 1 * time.Second
+		keyframeRequestBackoff = 500 * time.Millisecond
+		bitrateChangeBackoff   = 500 * time.Millisecond
+	)
+	lastBitrateChangeAt := time.Time{}
+	lastKeyframeReqAt := time.Time{}
+	severeSince := time.Time{}
+	recoverySince := time.Time{}
+	dropUntilKeyframe := false
+
+	applyBitrate := func(target int, reason string) {
+		if sess.streamCap == nil {
+			return
+		}
+		if target == currentBitrate {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+		defer cancel()
+		if err := sess.streamCap.SetStreamBitrate(ctx, target); err != nil {
+			log.Printf("[session %s] stream_bitrate(%d) failed (%s): %v", sess.sessionID, target, reason, err)
+			return
+		}
+		currentBitrate = target
+		lastBitrateChangeAt = time.Now()
+		log.Printf("[session %s] stream bitrate -> %d (%s)", sess.sessionID, target, reason)
+	}
+
+	requestKeyframe := func(reason string) {
+		if sess.streamCap == nil {
+			return
+		}
+		now := time.Now()
+		if !lastKeyframeReqAt.IsZero() && now.Sub(lastKeyframeReqAt) < keyframeRequestBackoff {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+		defer cancel()
+		if err := sess.streamCap.RequestStreamKeyframe(ctx); err != nil {
+			log.Printf("[session %s] stream_keyframe failed (%s): %v", sess.sessionID, reason, err)
+			return
+		}
+		lastKeyframeReqAt = now
+		log.Printf("[session %s] requested keyframe (%s)", sess.sessionID, reason)
+	}
+
 	var (
 		lastPTSUs      int64
 		written        uint64
 		totalWriteByte uint64
+		dropped        uint64
 		statsStart     = time.Now()
 	)
+	pliCh := sess.peer.PLI()
 
 	for {
 		select {
 		case <-sess.peer.Done():
 			return
+		case <-pliCh:
+			requestKeyframe("pli")
+			dropUntilKeyframe = true
 		case <-activityTimer.C:
 			log.Printf("[session %s] NAL activity timeout (%v with no samples), closing", sess.sessionID, activityTimeout)
 			go sm.StopSession(sess.sessionID)
@@ -558,6 +618,65 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 		case unit, ok := <-nals:
 			if !ok {
 				return
+			}
+			if unit == nil {
+				continue
+			}
+
+			now := time.Now()
+			queueDepth := len(nals)
+
+			if queueDepth >= severeQueueDepth {
+				if severeSince.IsZero() {
+					severeSince = now
+				}
+				if now.Sub(severeSince) >= severeWindow &&
+					currentBitrate > minBitrate &&
+					(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+					applyBitrate(minBitrate, "severe congestion")
+					requestKeyframe("severe congestion")
+					dropUntilKeyframe = true
+				}
+			} else {
+				severeSince = time.Time{}
+			}
+
+			if queueDepth >= moderateQueueDepth {
+				requestKeyframe("moderate congestion")
+				dropUntilKeyframe = true
+			}
+
+			if queueDepth >= mildQueueDepth &&
+				currentBitrate > minBitrate &&
+				(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+				next := clampBitrateDown(currentBitrate, minBitrate)
+				if next < currentBitrate {
+					applyBitrate(next, "queue pressure")
+				}
+			}
+
+			if queueDepth == 0 {
+				if recoverySince.IsZero() {
+					recoverySince = now
+				}
+				if now.Sub(recoverySince) >= recoveryWindow &&
+					currentBitrate < baseBitrate &&
+					(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+					next := clampBitrateUp(currentBitrate, baseBitrate)
+					if next > currentBitrate {
+						applyBitrate(next, "recovery")
+					}
+				}
+			} else {
+				recoverySince = time.Time{}
+			}
+
+			if dropUntilKeyframe && !unit.Config && !unit.Keyframe {
+				dropped++
+				continue
+			}
+			if unit.Keyframe {
+				dropUntilKeyframe = false
 			}
 
 			duration := time.Second / 30
@@ -590,11 +709,33 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 				if elapsed > 0 {
 					fps = float64(written) / elapsed
 				}
-				log.Printf("[session %s] NAL stats: written=%d bytes=%d fps=%.1f elapsed=%.1fs",
-					sess.sessionID, written, totalWriteByte, fps, elapsed)
+				log.Printf("[session %s] NAL stats: written=%d dropped=%d bytes=%d bitrate=%d fps=%.1f elapsed=%.1fs q=%d",
+					sess.sessionID, written, dropped, totalWriteByte, currentBitrate, fps, elapsed, len(nals))
 			}
 		}
 	}
+}
+
+func clampBitrateDown(current, min int) int {
+	if current <= min {
+		return min
+	}
+	next := (current * 3) / 4
+	if next < min {
+		return min
+	}
+	return next
+}
+
+func clampBitrateUp(current, max int) int {
+	if current >= max {
+		return max
+	}
+	next := (current * 5) / 4
+	if next > max {
+		return max
+	}
+	return next
 }
 
 func maybeStartAndroidStream(

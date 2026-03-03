@@ -95,3 +95,27 @@ func TestMaybeStartAndroidStreamReturnsErrorForFallback(t *testing.T) {
 		t.Fatalf("expected StartStream to be called once, got %d", dev.startCalls)
 	}
 }
+
+func TestClampBitrateDown(t *testing.T) {
+	if got := clampBitrateDown(2_000_000, 500_000); got != 1_500_000 {
+		t.Fatalf("expected 1,500,000, got %d", got)
+	}
+	if got := clampBitrateDown(550_000, 500_000); got != 500_000 {
+		t.Fatalf("expected clamp to min 500,000, got %d", got)
+	}
+	if got := clampBitrateDown(500_000, 500_000); got != 500_000 {
+		t.Fatalf("expected min to stay unchanged, got %d", got)
+	}
+}
+
+func TestClampBitrateUp(t *testing.T) {
+	if got := clampBitrateUp(1_000_000, 2_000_000); got != 1_250_000 {
+		t.Fatalf("expected 1,250,000, got %d", got)
+	}
+	if got := clampBitrateUp(1_900_000, 2_000_000); got != 2_000_000 {
+		t.Fatalf("expected clamp to max 2,000,000, got %d", got)
+	}
+	if got := clampBitrateUp(2_000_000, 2_000_000); got != 2_000_000 {
+		t.Fatalf("expected max to stay unchanged, got %d", got)
+	}
+}
