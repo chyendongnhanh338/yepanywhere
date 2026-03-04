@@ -6,6 +6,7 @@ import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
 import type {
   ImageFile,
+  PdfFile,
   ReadInput,
   ReadResult,
   TextFile,
@@ -60,7 +61,7 @@ function FileModalContent({
   renderedMarkdownHtml?: string;
 }) {
   const [showPreview, setShowPreview] = useState(false);
-  const lines = file.content.split("\n");
+  const lines = (file.content ?? "").split("\n");
   const hasMarkdownPreview = !!renderedMarkdownHtml;
 
   // Toggle button for markdown files
@@ -246,6 +247,45 @@ function ImageFileResult({ file }: { file: ImageFile }) {
 }
 
 /**
+ * Open base64 PDF data in a new browser tab
+ */
+function openPdfInNewTab(base64Data: string) {
+  const byteChars = atob(base64Data);
+  const byteArray = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    byteArray[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([byteArray], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+}
+
+/**
+ * PDF file result - button to open in new tab
+ */
+function PdfFileResult({
+  file,
+  filePath,
+}: { file: PdfFile; filePath?: string }) {
+  const sizeKB = file.originalSize ? Math.round(file.originalSize / 1024) : 0;
+  const fileName = filePath ? getFileName(filePath) : "document.pdf";
+
+  return (
+    <div className="read-pdf-result">
+      <button
+        type="button"
+        className="file-link-button"
+        onClick={() => openPdfInNewTab(file.base64)}
+      >
+        {fileName}
+        {sizeKB > 0 && <span className="file-line-count">({sizeKB}KB)</span>}
+        <span className="file-line-count">Open PDF</span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * Read tool result - dispatches to text or image handler
  */
 function ReadToolResult({
@@ -287,6 +327,17 @@ function ReadToolResult({
           ? String(errorResult.content)
           : "Failed to read file"}
       </div>
+    );
+  }
+
+  if (result.type === "pdf") {
+    return (
+      <>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+        <PdfFileResult file={result.file as PdfFile} />
+      </>
     );
   }
 
@@ -365,6 +416,26 @@ function ReadInteractiveSummary({
 
   if (!result?.file) {
     return <span>{fileName}</span>;
+  }
+
+  if (result.type === "pdf") {
+    const pdfFile = result.file as PdfFile;
+    return (
+      <button
+        type="button"
+        className="file-link-inline"
+        onClick={(e) => {
+          e.stopPropagation();
+          openPdfInNewTab(pdfFile.base64);
+        }}
+      >
+        {fileName}
+        <span className="file-line-count-inline">(PDF)</span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+      </button>
+    );
   }
 
   if (result.type === "image") {
@@ -457,6 +528,7 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
     const fileName = getFileName(
       r.type === "image" ? "image" : (r.file as TextFile).filePath,
     );
+    if (r.type === "pdf") return "PDF";
     if (r.type === "image") return "Image";
     return fileName;
   },

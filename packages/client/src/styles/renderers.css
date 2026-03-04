@@ -857,6 +857,12 @@ details[open] .collapsible__icon {
   border-radius: 4px;
 }
 
+.read-pdf-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .read-error {
   color: var(--error-color);
   padding: 0.5rem;

@@ -28,9 +28,15 @@ export interface ReadInput {
   limit?: number;
 }
 
+export interface PdfFile {
+  base64: string;
+  type: string; // MIME type, e.g. "application/pdf"
+  originalSize?: number;
+}
+
 export interface ReadResult {
-  type: "text" | "image";
-  file: TextFile | ImageFile;
+  type: "text" | "image" | "pdf";
+  file: TextFile | ImageFile | PdfFile;
 }
 
 export interface TextFile {
