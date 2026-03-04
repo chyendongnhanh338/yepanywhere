@@ -525,12 +525,9 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
     if (isError) return "Error";
     const r = result as ReadResult;
     if (!r?.file) return "Reading...";
-    const fileName = getFileName(
-      r.type === "image" ? "image" : (r.file as TextFile).filePath,
-    );
     if (r.type === "pdf") return "PDF";
     if (r.type === "image") return "Image";
-    return fileName;
+    return getFileName((r.file as TextFile).filePath);
   },
 
   renderInteractiveSummary(input, result, isError, _context) {
