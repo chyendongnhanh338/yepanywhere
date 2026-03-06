@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-03-06
+
+### Added
+- ModelInfoService for accurate context window lookups
+- PDF file previews in Read tool renderer
+- Server timestamps to streamed SDK messages for replay dedup
+- Stream vs persisted render parity harness
+- Slash commands attached to session REST response
+
+### Codex
+- Keep pending Bash rows collapsed
+- Improve image previews and Bash row summaries
+- Normalize tool rendering (heredoc writes, bash, edit patches) across stream and JSONL
+- Surface rate limit exhaustion as error messages
+- Treat rate-limit updates as telemetry only
+- Log Codex messages to sdk-raw
+
+### Fixed
+- Filter replayed stream messages using persisted timestamp watermark
+- Fix getResultSummary crash for PDF Read results
+- Fix live Codex edit patch previews for file changes
+- Persist provider to session metadata for correct resume
+- Detect claude-ollama sessions from model name in JSONL
+- Skip Ollama detection ping when URL is explicitly configured
+
 ## [0.4.8] - 2026-03-03
 
 ### Added
