@@ -10,6 +10,7 @@ import type { Logger } from "pino";
 import type { RawData, WebSocket } from "ws";
 import type { RelayConfig } from "./config.js";
 import type { ConnectionManager } from "./connections.js";
+import type { RelayTelemetryRecorder } from "./telemetry.js";
 
 /** State for each WebSocket connection */
 interface ConnectionState {
@@ -46,6 +47,7 @@ export function createWsHandler(
   connectionManager: ConnectionManager,
   config: RelayConfig,
   logger: Logger,
+  telemetry: RelayTelemetryRecorder,
 ) {
   function sendJson(ws: WebSocket, data: object): void {
     try {
@@ -187,6 +189,16 @@ export function createWsHandler(
           // Start ping interval for waiting connections
           startPingInterval(ws, state);
 
+          telemetry.record({
+            event: "server_register",
+            username: msg.username,
+            installId: msg.installId,
+            appVersion: msg.appVersion,
+            resumeProtocolVersion: msg.resumeProtocolVersion,
+            renderProtocolVersion: msg.renderProtocolVersion,
+            capabilities: msg.capabilities ? [...msg.capabilities] : undefined,
+          });
+
           logger.info(
             {
               username: msg.username,
@@ -232,6 +244,18 @@ export function createWsHandler(
           const response: RelayClientConnected = { type: "client_connected" };
           sendJson(ws, response);
 
+          telemetry.record({
+            event: "client_connect_success",
+            username: msg.username,
+            installId: result.server?.installId,
+            appVersion: result.server?.appVersion,
+            resumeProtocolVersion: result.server?.resumeProtocolVersion,
+            renderProtocolVersion: result.server?.renderProtocolVersion,
+            capabilities: result.server?.capabilities
+              ? [...result.server.capabilities]
+              : undefined,
+          });
+
           logger.info({ username: msg.username }, "Pair connected");
         } else {
           const response: RelayClientError = {
@@ -239,6 +263,11 @@ export function createWsHandler(
             reason: result.status,
           };
           sendJson(ws, response);
+          telemetry.record({
+            event: "client_connect_error",
+            username: msg.username,
+            reason: result.status,
+          });
           logger.info(
             { username: msg.username, reason: result.status },
             "Client connection failed",
@@ -265,14 +294,48 @@ export function createWsHandler(
       const state = getState(ws);
 
       stopPingInterval(state);
-      const wasPaired = state.paired;
-      const pairDisconnected = connectionManager.handleClose(
-        ws,
-        state.username,
-      );
+      const closeResult = connectionManager.handleClose(ws, state.username);
 
-      if (pairDisconnected && wasPaired) {
+      if (closeResult.kind === "pair_disconnected" && state.username) {
+        telemetry.record({
+          event: "pair_disconnected",
+          username: state.username,
+          initiator: closeResult.initiator,
+          closeCode: code,
+          closeReason: reason.toString("utf8"),
+        });
         logger.info({ username: state.username }, "Pair disconnected");
+      }
+
+      if (
+        closeResult.kind === "waiting_server_closed" &&
+        closeResult.server &&
+        state.username
+      ) {
+        telemetry.record({
+          event: "server_disconnect",
+          username: state.username,
+          installId: closeResult.server.installId,
+          connectionState: "waiting",
+          closeCode: code,
+          closeReason: reason.toString("utf8"),
+        });
+      }
+
+      if (
+        closeResult.kind === "pair_disconnected" &&
+        closeResult.initiator === "server" &&
+        closeResult.server &&
+        state.username
+      ) {
+        telemetry.record({
+          event: "server_disconnect",
+          username: state.username,
+          installId: closeResult.server.installId,
+          connectionState: "paired",
+          closeCode: code,
+          closeReason: reason.toString("utf8"),
+        });
       }
 
       if (state.username) {

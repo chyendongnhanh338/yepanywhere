@@ -6,6 +6,8 @@
  */
 
 import { type Server, createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
@@ -17,6 +19,8 @@ import { ConnectionManager } from "./connections.js";
 import { createDb, createTestDb } from "./db.js";
 import type { LogLevel } from "./logger.js";
 import { UsernameRegistry } from "./registry.js";
+import { generateRelayStatsHtml } from "./stats.js";
+import { createRelayTelemetryRecorder } from "./telemetry.js";
 import { createWsHandler } from "./ws-handler.js";
 
 export interface RelayServerOptions {
@@ -36,6 +40,14 @@ export interface RelayServerOptions {
   reclaimDays?: number;
   /** Disable pretty printing (for tests) */
   disablePrettyPrint?: boolean;
+  /** Structured telemetry directory override */
+  telemetryDir?: string;
+  /** Structured telemetry sampling interval override */
+  telemetrySampleIntervalMs?: number;
+  /** Structured telemetry node ID override */
+  telemetryNodeId?: string;
+  /** Disable structured telemetry */
+  disableTelemetry?: boolean;
 }
 
 export interface RelayServer {
@@ -55,6 +67,10 @@ export interface RelayServer {
   db: Database.Database;
   /** The logger instance */
   logger: Logger;
+  /** Structured telemetry status */
+  telemetry: ReturnType<
+    ReturnType<typeof createRelayTelemetryRecorder>["getStatus"]
+  >;
   /** Close the server and clean up resources */
   close(): Promise<void>;
 }
@@ -85,6 +101,16 @@ export async function createRelayServer(
       logToConsole: true,
       logToFile: false, // Disable file logging in test mode by default
       prettyPrint: !options.disablePrettyPrint,
+    },
+    telemetry: {
+      enabled: options.disableTelemetry !== true,
+      eventsDir:
+        options.telemetryDir ??
+        (options.dataDir
+          ? join(options.dataDir, "telemetry")
+          : join(tmpdir(), "yep-relay-telemetry")),
+      nodeId: options.telemetryNodeId ?? "relay-test",
+      sampleIntervalMs: options.telemetrySampleIntervalMs ?? 60_000,
     },
   };
 
@@ -117,6 +143,13 @@ export async function createRelayServer(
 
   // Create connection manager
   const connectionManager = new ConnectionManager(registry);
+  const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
+  telemetry.startSampling(() => ({
+    waiting: connectionManager.getWaitingCount(),
+    pairs: connectionManager.getPairCount(),
+    registered: registry.count(),
+    activeServers: connectionManager.getActiveServers().length,
+  }));
 
   // Create Hono app for HTTP endpoints
   const app = new Hono();
@@ -151,7 +184,21 @@ export async function createRelayServer(
       registered: registry.count(),
       activeServers: connectionManager.getActiveServers(),
       compatibility: connectionManager.getActiveServerSummary(),
+      telemetry: telemetry.getStatus(),
       memory: process.memoryUsage(),
+    });
+  });
+
+  app.get("/stats", (c) => {
+    const telemetryStatus = telemetry.getStatus();
+    if (!telemetryStatus.enabled || !telemetryStatus.eventsDir) {
+      return c.html(
+        "<html><body><p>Relay telemetry is disabled.</p></body></html>",
+      );
+    }
+
+    return c.html(generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
     });
   });
 
@@ -163,7 +210,12 @@ export async function createRelayServer(
   });
 
   // Create WebSocket handler
-  const wsHandler = createWsHandler(connectionManager, config, logger);
+  const wsHandler = createWsHandler(
+    connectionManager,
+    config,
+    logger,
+    telemetry,
+  );
 
   // Create HTTP server with Hono
   const requestListener = getRequestListener(app.fetch);
@@ -231,6 +283,7 @@ export async function createRelayServer(
         registry,
         db,
         logger,
+        telemetry: telemetry.getStatus(),
         async close() {
           // Close all WebSocket connections first
           for (const client of wss.clients) {
@@ -243,6 +296,8 @@ export async function createRelayServer(
 
           // Close the WebSocket server
           wss.close();
+
+          await telemetry.close();
 
           // Close the database
           db.close();

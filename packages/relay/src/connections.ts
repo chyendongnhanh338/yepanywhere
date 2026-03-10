@@ -11,9 +11,22 @@ export type RegistrationResult =
   | "invalid_username";
 
 export type ConnectionResult =
-  | { status: "connected"; serverWs: WebSocket }
+  | {
+      status: "connected";
+      serverWs: WebSocket;
+      server: ActiveRelayServer | null;
+    }
   | { status: "server_offline" }
   | { status: "unknown_username" };
+
+export type CloseResult =
+  | { kind: "waiting_server_closed"; server: ActiveRelayServer | null }
+  | {
+      kind: "pair_disconnected";
+      initiator: "server" | "client";
+      server: ActiveRelayServer | null;
+    }
+  | { kind: "none" };
 
 interface Pair {
   server: WebSocket;
@@ -157,7 +170,7 @@ export class ConnectionManager {
     // Update last seen for the username
     this.registry.updateLastSeen(username);
 
-    return { status: "connected", serverWs };
+    return { status: "connected", serverWs, server: serverInfo ?? null };
   }
 
   /**
@@ -193,20 +206,22 @@ export class ConnectionManager {
    * @param username - Username associated with this connection (if known)
    * @returns true if a pair was disconnected, false otherwise
    */
-  handleClose(ws: WebSocket, username?: string): boolean {
+  handleClose(ws: WebSocket, username?: string): CloseResult {
     // Check if this was a waiting connection
     if (username) {
       const waitingWs = this.waiting.get(username);
       if (waitingWs === ws) {
+        const serverInfo = this.activeServers.get(ws) ?? null;
         this.waiting.delete(username);
         this.activeServers.delete(ws);
-        return false;
+        return { kind: "waiting_server_closed", server: serverInfo };
       }
     }
 
     // Check if this was part of a pair
     const pair = this.pairLookup.get(ws);
     if (pair) {
+      const serverInfo = this.activeServers.get(pair.server) ?? null;
       this.pairs.delete(pair);
       this.pairLookup.delete(pair.server);
       this.pairLookup.delete(pair.client);
@@ -219,9 +234,13 @@ export class ConnectionManager {
       } catch {
         // Ignore close errors
       }
-      return true;
+      return {
+        kind: "pair_disconnected",
+        initiator: pair.server === ws ? "server" : "client",
+        server: serverInfo,
+      };
     }
-    return false;
+    return { kind: "none" };
   }
 
   /**

@@ -1,6 +1,13 @@
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import type { LogConfig, LogLevel } from "./logger.js";
+
+export interface RelayTelemetryRuntimeConfig {
+  enabled: boolean;
+  eventsDir: string;
+  nodeId: string;
+  sampleIntervalMs: number;
+}
 
 export interface RelayConfig {
   /** Port for the relay server (default: 4400) */
@@ -17,6 +24,8 @@ export interface RelayConfig {
   reclaimDays: number;
   /** Logging configuration */
   logging: LogConfig;
+  /** Structured relay telemetry configuration */
+  telemetry: RelayTelemetryRuntimeConfig;
 }
 
 function getEnvNumber(name: string, defaultValue: number): number {
@@ -52,6 +61,15 @@ export function loadConfig(): RelayConfig {
       logToConsole: getEnvBoolean("RELAY_LOG_TO_CONSOLE", true),
       logToFile: getEnvBoolean("RELAY_LOG_TO_FILE", true),
       prettyPrint: process.env.NODE_ENV !== "production",
+    },
+    telemetry: {
+      enabled: getEnvBoolean("RELAY_TELEMETRY_ENABLED", true),
+      eventsDir: process.env.RELAY_TELEMETRY_DIR ?? join(dataDir, "telemetry"),
+      nodeId: process.env.RELAY_NODE_ID ?? hostname(),
+      sampleIntervalMs: getEnvNumber(
+        "RELAY_TELEMETRY_SAMPLE_INTERVAL_MS",
+        60_000,
+      ),
     },
   };
 }

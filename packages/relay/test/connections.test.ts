@@ -124,6 +124,7 @@ describe("ConnectionManager", () => {
       expect(result.status).toBe("connected");
       if (result.status === "connected") {
         expect(result.serverWs).toBe(serverWs);
+        expect(result.server?.installId).toBe("install-1");
       }
       expect(manager.getWaitingCount()).toBe(0);
       expect(manager.getPairCount()).toBe(1);
@@ -195,7 +196,15 @@ describe("ConnectionManager", () => {
       manager.registerServer(ws, "alice", "install-1");
       expect(manager.getWaitingCount()).toBe(1);
 
-      manager.handleClose(ws, "alice");
+      const result = manager.handleClose(ws, "alice");
+      expect(result).toEqual({
+        kind: "waiting_server_closed",
+        server: expect.objectContaining({
+          username: "alice",
+          installId: "install-1",
+          state: "waiting",
+        }),
+      });
       expect(manager.getWaitingCount()).toBe(0);
     });
 
@@ -208,7 +217,16 @@ describe("ConnectionManager", () => {
       expect(manager.getPairCount()).toBe(1);
 
       // Client disconnects
-      manager.handleClose(clientWs);
+      const result = manager.handleClose(clientWs);
+      expect(result).toEqual({
+        kind: "pair_disconnected",
+        initiator: "client",
+        server: expect.objectContaining({
+          username: "alice",
+          installId: "install-1",
+          state: "paired",
+        }),
+      });
       expect(manager.getPairCount()).toBe(0);
       // Server should be closed
       expect(serverWs.close).toHaveBeenCalled();
@@ -222,7 +240,16 @@ describe("ConnectionManager", () => {
       manager.connectClient(clientWs, "alice");
 
       // Server disconnects
-      manager.handleClose(serverWs, "alice");
+      const result = manager.handleClose(serverWs, "alice");
+      expect(result).toEqual({
+        kind: "pair_disconnected",
+        initiator: "server",
+        server: expect.objectContaining({
+          username: "alice",
+          installId: "install-1",
+          state: "paired",
+        }),
+      });
       expect(manager.getPairCount()).toBe(0);
       // Client should be closed
       expect(clientWs.close).toHaveBeenCalled();

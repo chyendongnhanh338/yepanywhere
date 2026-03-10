@@ -9,6 +9,8 @@ import { ConnectionManager } from "./connections.js";
 import { createDb } from "./db.js";
 import { createLogger } from "./logger.js";
 import { UsernameRegistry } from "./registry.js";
+import { generateRelayStatsHtml } from "./stats.js";
+import { createRelayTelemetryRecorder } from "./telemetry.js";
 import { createWsHandler } from "./ws-handler.js";
 
 const config = loadConfig();
@@ -39,6 +41,13 @@ if (reclaimed > 0) {
 
 // Create connection manager
 const connectionManager = new ConnectionManager(registry);
+const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
+telemetry.startSampling(() => ({
+  waiting: connectionManager.getWaitingCount(),
+  pairs: connectionManager.getPairCount(),
+  registered: registry.count(),
+  activeServers: connectionManager.getActiveServers().length,
+}));
 
 // Create Hono app for HTTP endpoints
 const app = new Hono();
@@ -73,7 +82,21 @@ app.get("/status", (c) => {
     registered: registry.count(),
     activeServers: connectionManager.getActiveServers(),
     compatibility: connectionManager.getActiveServerSummary(),
+    telemetry: telemetry.getStatus(),
     memory: process.memoryUsage(),
+  });
+});
+
+app.get("/stats", (c) => {
+  const telemetryStatus = telemetry.getStatus();
+  if (!telemetryStatus.enabled || !telemetryStatus.eventsDir) {
+    return c.html(
+      "<html><body><p>Relay telemetry is disabled.</p></body></html>",
+    );
+  }
+
+  return c.html(generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
   });
 });
 
@@ -85,7 +108,7 @@ app.get("/online/:username", (c) => {
 });
 
 // Create WebSocket handler
-const wsHandler = createWsHandler(connectionManager, config, logger);
+const wsHandler = createWsHandler(connectionManager, config, logger, telemetry);
 
 // Create HTTP server with Hono
 const requestListener = getRequestListener(app.fetch);
@@ -170,17 +193,16 @@ function shutdown() {
       // Ignore errors
     }
   }
-
-  db.close();
-
   // Give connections a moment to close gracefully, then force exit
   const forceExitTimeout = setTimeout(() => {
     logger.warn("Force exiting after timeout");
     process.exit(0);
   }, 2000);
 
-  server.close(() => {
+  server.close(async () => {
     clearTimeout(forceExitTimeout);
+    await telemetry.close();
+    db.close();
     logger.info("Relay server stopped");
     process.exit(0);
   });

@@ -311,6 +311,14 @@ describe("Relay Server E2E", () => {
         count: 1,
       });
     });
+
+    it("should render a stats page", async () => {
+      const response = await fetch(`http://localhost:${relay.port}/stats`);
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(html).toContain("Yep Relay Stats");
+    });
   });
 
   describe("Client Connection Flow", () => {
