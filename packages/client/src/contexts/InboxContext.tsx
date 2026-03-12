@@ -17,6 +17,8 @@ import {
 import { type InboxItem, type InboxResponse, api } from "../api/client";
 import { useFileActivity } from "../hooks/useFileActivity";
 import { authEvents } from "../lib/authEvents";
+import { isRemoteClient } from "../lib/connection";
+import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 
 // Re-export types for consumers
 export type { InboxItem, InboxResponse } from "../api/client";
@@ -172,10 +174,14 @@ export function InboxProvider({
   children,
   initialEnabled = true,
 }: InboxProviderProps) {
+  const remoteConnection = useOptionalRemoteConnection();
   const [inbox, setInbox] = useState<InboxResponse>(EMPTY_INBOX);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [enabled, setEnabled] = useState(initialEnabled);
+  const isRemoteConnectionReady =
+    !isRemoteClient() ||
+    (remoteConnection !== null && remoteConnection.connection !== null);
 
   // Track the order of session IDs per tier for stable rendering
   const tierOrderRef = useRef<TierOrder>(createEmptyTierOrder());
@@ -191,39 +197,44 @@ export function InboxProvider({
    * Fetches inbox data and applies stable ordering.
    * @param forceFullSort - If true, uses server sort order instead of stable merge
    */
-  const fetchInbox = useCallback(async (forceFullSort = false) => {
-    // Skip if disabled, on login page, or login is required (prevents 401s)
-    if (
-      !enabledRef.current ||
-      window.location.pathname === "/login" ||
-      authEvents.loginRequired
-    ) {
-      return;
-    }
-
-    try {
-      const data = await api.getInbox();
-
-      if (!hasInitialLoadRef.current || forceFullSort) {
-        // Initial load or explicit refresh: use server's sort order
-        setInbox(data);
-        tierOrderRef.current = extractTierOrder(data);
-        hasInitialLoadRef.current = true;
-      } else {
-        // Subsequent fetches: merge with stable ordering
-        const mergedData = mergeWithStableOrder(data, tierOrderRef.current);
-        setInbox(mergedData);
-        // Update tier order to include any new items
-        tierOrderRef.current = extractTierOrder(mergedData);
+  const fetchInbox = useCallback(
+    async (forceFullSort = false) => {
+      // Skip if disabled, remote auth is still establishing, on login page,
+      // or login is required (prevents transient auth errors and 401s).
+      if (
+        !enabledRef.current ||
+        !isRemoteConnectionReady ||
+        window.location.pathname === "/login" ||
+        authEvents.loginRequired
+      ) {
+        return;
       }
 
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      try {
+        const data = await api.getInbox();
+
+        if (!hasInitialLoadRef.current || forceFullSort) {
+          // Initial load or explicit refresh: use server's sort order
+          setInbox(data);
+          tierOrderRef.current = extractTierOrder(data);
+          hasInitialLoadRef.current = true;
+        } else {
+          // Subsequent fetches: merge with stable ordering
+          const mergedData = mergeWithStableOrder(data, tierOrderRef.current);
+          setInbox(mergedData);
+          // Update tier order to include any new items
+          tierOrderRef.current = extractTierOrder(mergedData);
+        }
+
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [isRemoteConnectionReady],
+  );
 
   /**
    * Force a full refresh with server-provided sort order.
@@ -236,9 +247,11 @@ export function InboxProvider({
    * Debounced refetch - prevents rapid refetches from multiple SSE events
    */
   const debouncedRefetch = useCallback(() => {
-    // Skip if disabled, on login page, or login is required
+    // Skip if disabled, remote auth is still establishing, on login page,
+    // or login is required.
     if (
       !enabledRef.current ||
+      !isRemoteConnectionReady ||
       window.location.pathname === "/login" ||
       authEvents.loginRequired
     ) {
@@ -251,7 +264,7 @@ export function InboxProvider({
     debounceTimerRef.current = setTimeout(() => {
       fetchInbox();
     }, REFETCH_DEBOUNCE_MS);
-  }, [fetchInbox]);
+  }, [fetchInbox, isRemoteConnectionReady]);
 
   // Subscribe to SSE events for real-time updates
   // NOTE: We no longer refetch on file-change events. The inbox API primarily categorizes
@@ -273,12 +286,13 @@ export function InboxProvider({
   useEffect(() => {
     if (
       enabled &&
+      isRemoteConnectionReady &&
       window.location.pathname !== "/login" &&
       !authEvents.loginRequired
     ) {
       fetchInbox();
     }
-  }, [enabled, fetchInbox]);
+  }, [enabled, fetchInbox, isRemoteConnectionReady]);
 
   // Cleanup debounce timer
   useEffect(() => {
