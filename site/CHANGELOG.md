@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.21] - 2026-03-13
+
+### Added
+- iOS simulator HID input support in remote client
+- `/model` slash command for mid-session model switching
+- PDF file previews in Read tool renderer
+
+### Fixed
+- Fix inbox race condition
+- Prevent Enter key from triggering send during IME composition
+- Improve Codex replay deduplication and session reconnect merging
+- Fix Codex session cloning in mixed projects
+- Keep pending Codex Bash rows collapsed
+
+### Changed
+- Reduce routine update checks
+
 ## [site-v1.5.20] - 2026-03-03
 
 ### Changed
