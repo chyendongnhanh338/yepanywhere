@@ -31,6 +31,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 
 | Name | One-liner | GitHub | License | Who | Stars |
 |------|-----------|--------|---------|-----|-------|
+| **Codexia** | Tauri desktop workstation for Codex CLI + Claude Code with task scheduler, git worktrees, remote control, IDE editor, MCP ([deep dive](codexia.md)) | [milisp/codexia](https://github.com/milisp/codexia) | AGPL-3.0 | milisp | 489 |
 | **Farfield** | Local web UI for remote-controlling Codex Desktop via IPC socket | [achimala/farfield](https://github.com/achimala/farfield) | MIT | achimala | 89 |
 | **AgentOS** | Mobile-first multi-agent dashboard (Claude, Codex, Gemini, Aider, Cursor) | [saadnvd1/agent-os](https://github.com/saadnvd1/agent-os) | — | saadnvd1 | 81 |
 | **Chell** | Claude Code session manager | [Cerulin/Chell](https://github.com/Cerulin/Chell) | — | Cerulin | 72 |
@@ -55,6 +56,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **claude-link** | Control Claude Code from your phone via Telegram — message forwarding, voice support | [Qsanti/claude-link](https://github.com/Qsanti/claude-link) | MIT | Qsanti | 0 |
 | **Harnss** | Electron desktop app for parallel Claude Code, Codex, and ACP agents with MCP server integration | [OpenSource03/harnss](https://github.com/OpenSource03/harnss) | MIT | OpenSource03 | 3 |
 | **Clautel** | Use Claude Code from your phone via Telegram — manager bot spawns per-project worker bots | [AnasNadeem/clautel](https://github.com/AnasNadeem/clautel) | MIT | AnasNadeem | 8 |
+| **Forge** | Self-hosted web platform for Claude Code with tmux terminal, YAML task orchestration, Cloudflare tunnels, Telegram bot | [aiwatching/forge](https://github.com/aiwatching/forge) | MIT | aiwatching | 1 |
 
 ## Adjacent: "Claw" Runtimes
 
@@ -93,4 +95,4 @@ Already listed above: emdash, claudecodeui.
 
 ## Last Updated
 
-2026-02-25
+2026-03-15
