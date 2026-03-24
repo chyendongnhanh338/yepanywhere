@@ -27,6 +27,7 @@ import { normalizeSession } from "../sessions/normalization.js";
 import {
   type PaginationInfo,
   sliceAtCompactBoundaries,
+  sliceLastMessages,
 } from "../sessions/pagination.js";
 import { augmentPersistedSessionMessages } from "../sessions/persisted-augments.js";
 import type { ISessionReader } from "../sessions/types.js";
@@ -501,14 +502,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   // GET /api/projects/:projectId/sessions/:sessionId - Get session detail
   // Optional query params:
   //   ?afterMessageId=<id> - incremental forward-fetch (append new messages)
+  //   ?tailMessages=<n> - return only last N messages
   //   ?tailCompactions=<n> - return only last N compact boundaries worth of messages
-  //   ?beforeMessageId=<id> - cursor for loading older chunks (used with tailCompactions)
+  //   ?beforeMessageId=<id> - cursor for loading older chunks
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
+    const tailMessagesParam = c.req.query("tailMessages");
     const tailCompactionsParam = c.req.query("tailCompactions");
     const beforeMessageId = c.req.query("beforeMessageId");
+    const tailMessages =
+      tailMessagesParam !== undefined
+        ? Number.parseInt(tailMessagesParam, 10)
+        : undefined;
     const tailCompactions =
       tailCompactionsParam !== undefined
         ? Number.parseInt(tailCompactionsParam, 10)
@@ -702,9 +709,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
       : undefined;
 
-    // Apply compact-boundary pagination if requested (BEFORE expensive augmentation)
-    // tailCompactions slices to last N compact boundaries; skip when afterMessageId is
-    // present since that's a different use case (incremental forward-fetch)
+    // Apply pagination if requested (BEFORE expensive augmentation).
+    // Skip when afterMessageId is present since that's incremental forward-fetch.
     let paginationInfo: PaginationInfo | undefined;
     if (
       tailCompactions !== undefined &&
@@ -715,6 +721,19 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const sliced = sliceAtCompactBoundaries(
         session.messages,
         tailCompactions,
+        beforeMessageId,
+      );
+      session = { ...session, messages: sliced.messages };
+      paginationInfo = sliced.pagination;
+    } else if (
+      tailMessages !== undefined &&
+      !Number.isNaN(tailMessages) &&
+      tailMessages > 0 &&
+      !afterMessageId
+    ) {
+      const sliced = sliceLastMessages(
+        session.messages,
+        tailMessages,
         beforeMessageId,
       );
       session = { ...session, messages: sliced.messages };
