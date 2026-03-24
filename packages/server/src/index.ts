@@ -37,6 +37,10 @@ import {
   SessionMetadataService,
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
+import {
+  NotificationChannelService,
+  NotificationDispatcher,
+} from "./notifications-channels/index.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
@@ -334,6 +338,9 @@ const sessionIndexService = new SessionIndexService({
   eventBus,
 });
 const pushService = new PushService({ dataDir: config.dataDir });
+const notificationChannelService = new NotificationChannelService({
+  dataDir: config.dataDir,
+});
 const browserProfileService = new BrowserProfileService({
   dataDir: config.dataDir,
 });
@@ -367,6 +374,11 @@ const sharingService = new SharingService({
   dataDir: config.dataDir,
 });
 const modelInfoService = new ModelInfoService();
+const notificationDispatcher = new NotificationDispatcher({
+  pushService,
+  channelService: notificationChannelService,
+  connectedBrowsers: connectedBrowsersService,
+});
 
 async function startServer() {
   let tlsOptions: { key: Buffer; cert: Buffer } | undefined;
@@ -393,6 +405,7 @@ async function startServer() {
   await projectMetadataService.initialize();
   await sessionIndexService.initialize();
   await pushService.initialize();
+  await notificationChannelService.initialize();
   await browserProfileService.initialize();
   await recentsService.initialize();
   await authService.initialize();
@@ -511,6 +524,8 @@ async function startServer() {
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
     pushService,
+    notificationDispatcher,
+    notificationChannelService,
     recentsService,
     authService,
     authDisabled: config.authDisabled,

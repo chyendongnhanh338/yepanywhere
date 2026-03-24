@@ -1,5 +1,6 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NotificationDispatcher } from "../../src/notifications-channels/index.js";
 import { PushNotifier } from "../../src/push/PushNotifier.js";
 import type { PushService } from "../../src/push/PushService.js";
 import type { Supervisor } from "../../src/supervisor/Supervisor.js";
@@ -13,6 +14,7 @@ import type {
 describe("PushNotifier", () => {
   let mockEventBus: EventBus;
   let mockPushService: PushService;
+  let mockDispatcher: NotificationDispatcher;
   let mockSupervisor: Supervisor;
   let eventHandler: ((event: BusEvent) => void) | null = null;
   let unsubscribeCalled = false;
@@ -44,6 +46,13 @@ describe("PushNotifier", () => {
       ),
       isNotificationTypeEnabled: vi.fn(() => true),
     } as unknown as PushService;
+
+    mockDispatcher = {
+      dispatch: vi.fn(async () => ({
+        webPush: [{ browserProfileId: "profile-1", success: true }],
+        external: [{ channelId: "channel-1", success: true }],
+      })),
+    } as unknown as NotificationDispatcher;
 
     // Mock Supervisor
     mockSupervisor = {
@@ -158,12 +167,33 @@ describe("PushNotifier", () => {
       expect(mockPushService.sendToAll).not.toHaveBeenCalled();
     });
 
-    it("should not send push when no subscriptions exist", async () => {
+    it("should still dispatch external notifications when no subscriptions exist", async () => {
       vi.mocked(mockPushService.getSubscriptionCount).mockReturnValue(0);
+      const mockProcess = {
+        state: {
+          type: "waiting-input",
+          request: {
+            id: "req-1",
+            sessionId: "session-1",
+            type: "tool-approval",
+            prompt: "Allow Edit?",
+            toolName: "Edit",
+            toolInput: { file_path: "/home/user/test-project/src/index.ts" },
+            timestamp: new Date().toISOString(),
+          } as InputRequest,
+        } as ProcessState,
+      };
+
+      vi.mocked(mockSupervisor.getProcessForSession).mockReturnValue(
+        mockProcess as unknown as ReturnType<
+          Supervisor["getProcessForSession"]
+        >,
+      );
 
       new PushNotifier({
         eventBus: mockEventBus,
         pushService: mockPushService,
+        notificationDispatcher: mockDispatcher,
         supervisor: mockSupervisor,
       });
 
@@ -181,6 +211,7 @@ describe("PushNotifier", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(mockPushService.sendToAll).not.toHaveBeenCalled();
+      expect(mockDispatcher.dispatch).toHaveBeenCalledTimes(1);
     });
 
     it("should not send push when process not found", async () => {

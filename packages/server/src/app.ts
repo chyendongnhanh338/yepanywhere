@@ -17,6 +17,11 @@ import {
   hostCheckMiddleware,
   requireCustomHeader,
 } from "./middleware/security.js";
+import {
+  type NotificationChannelService,
+  type NotificationDispatcher,
+  createNotificationChannelRoutes,
+} from "./notifications-channels/index.js";
 import type { NotificationService } from "./notifications/index.js";
 import {
   CODEX_SESSIONS_DIR,
@@ -114,6 +119,10 @@ export interface AppOptions {
   frontendProxy?: FrontendProxy;
   /** PushService for web push notifications */
   pushService?: PushService;
+  /** External notification channels settings service */
+  notificationChannelService?: NotificationChannelService;
+  /** External/web push dispatcher that fans out notifications */
+  notificationDispatcher?: NotificationDispatcher;
   /** RecentsService for tracking recently visited sessions */
   recentsService?: RecentsService;
   /** Maximum upload file size in bytes. 0 = unlimited */
@@ -387,6 +396,7 @@ export function createApp(options: AppOptions): AppResult {
     new PushNotifier({
       eventBus: options.eventBus,
       pushService: options.pushService,
+      notificationDispatcher: options.notificationDispatcher,
       supervisor,
       connectedBrowsers: options.connectedBrowsers,
     });
@@ -677,6 +687,24 @@ export function createApp(options: AppOptions): AppResult {
     app.route(
       "/api/push",
       createPushRoutes({ pushService: options.pushService }),
+    );
+  }
+
+  // External notification channel routes
+  if (options.notificationChannelService && options.notificationDispatcher) {
+    app.route(
+      "/api/notification-channels",
+      createNotificationChannelRoutes({
+        channelService: options.notificationChannelService,
+        dispatcher: options.notificationDispatcher,
+      }),
+    );
+    app.route(
+      "/api/notifications/channels",
+      createNotificationChannelRoutes({
+        channelService: options.notificationChannelService,
+        dispatcher: options.notificationDispatcher,
+      }),
     );
   }
 

@@ -1,3 +1,4 @@
+import { BackendNotificationChannelsSection } from "../../components/BackendNotificationChannelsSection";
 import { BrowserNotificationToggle } from "../../components/BrowserNotificationToggle";
 import { PushNotificationToggle } from "../../components/PushNotificationToggle";
 import { useBrowserNotifications } from "../../hooks/useBrowserNotifications";
@@ -259,6 +260,9 @@ export function NotificationsSettings() {
           )}
         </div>
       </section>
+
+      {/* Backend notification channels - server-to-server providers */}
+      <BackendNotificationChannelsSection />
 
       {/* Desktop notifications - browser Notification API (not available on mobile) */}
       {!isMobile && (

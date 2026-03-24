@@ -9,6 +9,7 @@
 
 import { basename } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
+import type { NotificationDispatcher } from "../notifications-channels/index.js";
 import { decodeProjectId } from "../projects/paths.js";
 import type { ConnectedBrowsersService } from "../services/ConnectedBrowsersService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -19,11 +20,16 @@ import type {
   ProcessStateEvent,
 } from "../watcher/EventBus.js";
 import type { PushService } from "./PushService.js";
-import type { DismissPayload, PendingInputPayload } from "./types.js";
+import type {
+  DismissPayload,
+  PendingInputPayload,
+  SessionHaltedPayload,
+} from "./types.js";
 
 export interface PushNotifierOptions {
   eventBus: EventBus;
   pushService: PushService;
+  notificationDispatcher?: NotificationDispatcher;
   supervisor: Supervisor;
   /** Optional: skip push for connected browser profiles */
   connectedBrowsers?: ConnectedBrowsersService;
@@ -32,6 +38,7 @@ export interface PushNotifierOptions {
 export class PushNotifier {
   private eventBus: EventBus;
   private pushService: PushService;
+  private notificationDispatcher?: NotificationDispatcher;
   private supervisor: Supervisor;
   private connectedBrowsers?: ConnectedBrowsersService;
   private unsubscribe: (() => void) | null = null;
@@ -41,6 +48,7 @@ export class PushNotifier {
   constructor(options: PushNotifierOptions) {
     this.eventBus = options.eventBus;
     this.pushService = options.pushService;
+    this.notificationDispatcher = options.notificationDispatcher;
     this.supervisor = options.supervisor;
     this.connectedBrowsers = options.connectedBrowsers;
 
@@ -60,17 +68,16 @@ export class PushNotifier {
   private async handleProcessStateChange(
     event: ProcessStateEvent,
   ): Promise<void> {
+    if (event.activity === "idle") {
+      await this.sendSessionHalted(event);
+    }
+
     // Send dismiss when leaving waiting-input (if we sent a notification for it)
     if (event.activity !== "waiting-input") {
       if (this.sessionsWithNotification.has(event.sessionId)) {
         await this.sendDismiss(event.sessionId);
         this.sessionsWithNotification.delete(event.sessionId);
       }
-      return;
-    }
-
-    // Check if there are any subscriptions
-    if (this.pushService.getSubscriptionCount() === 0) {
       return;
     }
 
@@ -115,15 +122,21 @@ export class PushNotifier {
         );
       }
 
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
-      const successCount = results.filter((r) => r.success).length;
-      if (successCount > 0) {
+      const results = this.notificationDispatcher
+        ? await this.notificationDispatcher.dispatch(payload, settingKey)
+        : {
+            webPush: await this.pushService.sendToAll(payload, {
+              excludeBrowserProfileIds: connectedIds,
+            }),
+            external: [],
+          };
+
+      const webPushSuccess = results.webPush.filter((r) => r.success).length;
+      const externalSuccess = results.external.filter((r) => r.success).length;
+      if (webPushSuccess > 0 || externalSuccess > 0) {
         console.log(
-          `[PushNotifier] Sent pending-input notification to ${successCount}/${results.length} devices`,
+          `[PushNotifier] Sent pending-input notification to ${webPushSuccess}/${results.webPush.length} web push targets and ${externalSuccess}/${results.external.length} external channels`,
         );
-        // Track that we sent a notification for this session
         this.sessionsWithNotification.add(event.sessionId);
       }
     } catch (error) {
@@ -150,6 +163,32 @@ export class PushNotifier {
       console.log(`[PushNotifier] Sent dismiss for session ${sessionId}`);
     } catch (error) {
       console.error("[PushNotifier] Failed to send dismiss:", error);
+    }
+  }
+
+  private async sendSessionHalted(event: ProcessStateEvent): Promise<void> {
+    if (!this.pushService.isNotificationTypeEnabled("sessionHalted")) {
+      return;
+    }
+
+    const payload: SessionHaltedPayload = {
+      type: "session-halted",
+      sessionId: event.sessionId,
+      projectId: event.projectId,
+      projectName: this.getProjectName(event.projectId),
+      reason: "idle",
+      duration: 0,
+      timestamp: event.timestamp,
+    };
+
+    try {
+      if (this.notificationDispatcher) {
+        await this.notificationDispatcher.dispatch(payload, "sessionHalted");
+      } else {
+        await this.pushService.sendToAll(payload);
+      }
+    } catch (error) {
+      console.error("[PushNotifier] Failed to send session-halted:", error);
     }
   }
 

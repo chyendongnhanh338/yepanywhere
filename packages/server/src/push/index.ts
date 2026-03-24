@@ -7,6 +7,7 @@ export { PushService, type PushServiceOptions } from "./PushService.js";
 export { createPushRoutes, type PushRoutesDeps } from "./routes.js";
 export type {
   DismissPayload,
+  NotificationSettings,
   PendingInputPayload,
   PushPayload,
   PushPayloadType,

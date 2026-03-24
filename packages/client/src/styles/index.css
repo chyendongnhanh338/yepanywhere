@@ -3853,6 +3853,12 @@ a.sidebar-nav-item {
   font-size: var(--font-size-sm);
 }
 
+.settings-error {
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
 .settings-textarea {
   width: 100%;
   min-height: 120px;
@@ -7696,6 +7702,138 @@ a.sidebar-nav-item {
 .settings-button-danger-subtle:hover {
   background: var(--error-color);
   color: #fff;
+}
+
+.backend-channels-actions-row {
+  align-items: flex-start;
+}
+
+.backend-channels-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.backend-channels-add-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+}
+
+.backend-channel-select-compact {
+  width: 11rem;
+  min-width: 11rem;
+  flex: 0 0 11rem;
+}
+
+.backend-channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.backend-channel-card {
+  background: var(--bg-code);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.backend-channel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.backend-channel-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backend-channel-form-grid {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.backend-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.backend-channel-input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.backend-channel-input:focus {
+  outline: none;
+  border-color: var(--app-yep-green);
+}
+
+.backend-toggle {
+  align-items: flex-start;
+}
+
+.backend-events-grid {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.backend-event-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.backend-test-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.backend-test-row .backend-channel-input {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .backend-channels-add-inline {
+    width: 100%;
+  }
+
+  .backend-channel-select-compact {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .backend-channel-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-events-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-test-row {
+    flex-direction: column;
+  }
 }
 
 /* Info box for explaining things like "SW disabled only affects this device" */

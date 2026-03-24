@@ -113,6 +113,453 @@ export interface GlobalSessionsResponse {
   projects: ProjectOption[];
 }
 
+export interface BackendNotificationEventTypes {
+  toolApproval: boolean;
+  userQuestion: boolean;
+  sessionHalted: boolean;
+}
+
+export type BackendNotificationChannelType =
+  | "customemail"
+  | "gotify"
+  | "webhook"
+  | "slack"
+  | "teams"
+  | "mattermost"
+  | "bark"
+  | "line"
+  | "pushover"
+  | "pushbullet"
+  | "matrix"
+  | "googlechat"
+  | "rocketchat"
+  | "keep"
+  | "kook"
+  | "dingtalk"
+  | "wechatrobot"
+  | "wechatapp"
+  | "wxpusher"
+  | "igot"
+  | "qmsg"
+  | "xizhi"
+  | "onebot"
+  | "feishu"
+  | "telegram"
+  | "serverchan"
+  | "discord"
+  | "pushplus"
+  | "pushdeer"
+  | "ntfy";
+
+export interface CustomEmailChannelConfig {
+  emailType: "text" | "html";
+  toAddress: string;
+  authUser: string;
+  authPass: string;
+  host: string;
+  port: number;
+}
+
+export interface DingtalkChannelConfig {
+  accessToken: string;
+  secret?: string;
+}
+
+export interface GotifyChannelConfig {
+  serverUrl: string;
+  applicationToken: string;
+  priority?: number;
+}
+
+export interface WebhookChannelConfig {
+  url: string;
+  method: "post" | "get";
+}
+
+export interface SlackChannelConfig {
+  webhook: string;
+  channel?: string;
+  username?: string;
+}
+
+export interface TeamsChannelConfig {
+  webhook: string;
+}
+
+export interface MattermostChannelConfig {
+  webhook: string;
+  username?: string;
+  channel?: string;
+}
+
+export interface BarkChannelConfig {
+  endpoint: string;
+}
+
+export interface LineChannelConfig {
+  channelAccessToken: string;
+  userId: string;
+}
+
+export interface PushoverChannelConfig {
+  userKey: string;
+  appToken: string;
+}
+
+export interface PushbulletChannelConfig {
+  accessToken: string;
+}
+
+export interface MatrixChannelConfig {
+  homeserverUrl: string;
+  accessToken: string;
+  roomId: string;
+}
+
+export interface GoogleChatChannelConfig {
+  webhook: string;
+}
+
+export interface RocketChatChannelConfig {
+  webhook: string;
+  channel?: string;
+  username?: string;
+}
+
+export interface KeepChannelConfig {
+  webhookUrl: string;
+  apiKey: string;
+}
+
+export interface KookChannelConfig {
+  botToken: string;
+  channelId: string;
+}
+
+export interface WechatRobotChannelConfig {
+  key: string;
+}
+
+export interface WechatAppChannelConfig {
+  corpId: string;
+  secret: string;
+  agentId: number;
+  toUser?: string;
+}
+
+export interface WxPusherChannelConfig {
+  appToken: string;
+  uid: string;
+}
+
+export interface IGotChannelConfig {
+  key: string;
+}
+
+export interface QmsgChannelConfig {
+  key: string;
+  qq?: string;
+  bot?: string;
+}
+
+export interface XiZhiChannelConfig {
+  key: string;
+}
+
+export interface OneBotChannelConfig {
+  baseUrl: string;
+  accessToken?: string;
+  messageType: "private" | "group";
+  userId?: number;
+  groupId?: number;
+}
+
+export interface FeishuChannelConfig {
+  appId: string;
+  appSecret: string;
+  receiveIdType: "open_id" | "user_id" | "union_id" | "email" | "chat_id";
+  receiveId: string;
+}
+
+export interface TelegramChannelConfig {
+  botToken: string;
+  chatId: string;
+}
+
+export interface ServerChanChannelConfig {
+  sendKey: string;
+}
+
+export interface DiscordChannelConfig {
+  webhook: string;
+  username?: string;
+}
+
+export interface PushPlusChannelConfig {
+  token: string;
+  template?: "html" | "json" | "cloudMonitor";
+  channel?: "wechat" | "webhook" | "mail" | "cp";
+}
+
+export interface PushDeerChannelConfig {
+  pushKey: string;
+  endpoint?: string;
+  type?: "text" | "markdown" | "image";
+}
+
+export interface NtfyChannelConfig {
+  url: string;
+  topic: string;
+  authenticationMethod?: "none" | "accessToken" | "usernamePassword";
+  accessToken?: string;
+  username?: string;
+  password?: string;
+  priority?: 1 | 2 | 3 | 4 | 5;
+  tags?: string[];
+}
+
+export type BackendNotificationChannel =
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "customemail";
+      eventTypes: BackendNotificationEventTypes;
+      config: CustomEmailChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "gotify";
+      eventTypes: BackendNotificationEventTypes;
+      config: GotifyChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "webhook";
+      eventTypes: BackendNotificationEventTypes;
+      config: WebhookChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "slack";
+      eventTypes: BackendNotificationEventTypes;
+      config: SlackChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "teams";
+      eventTypes: BackendNotificationEventTypes;
+      config: TeamsChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "mattermost";
+      eventTypes: BackendNotificationEventTypes;
+      config: MattermostChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "bark";
+      eventTypes: BackendNotificationEventTypes;
+      config: BarkChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "line";
+      eventTypes: BackendNotificationEventTypes;
+      config: LineChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "pushover";
+      eventTypes: BackendNotificationEventTypes;
+      config: PushoverChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "pushbullet";
+      eventTypes: BackendNotificationEventTypes;
+      config: PushbulletChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "matrix";
+      eventTypes: BackendNotificationEventTypes;
+      config: MatrixChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "googlechat";
+      eventTypes: BackendNotificationEventTypes;
+      config: GoogleChatChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "rocketchat";
+      eventTypes: BackendNotificationEventTypes;
+      config: RocketChatChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "keep";
+      eventTypes: BackendNotificationEventTypes;
+      config: KeepChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "kook";
+      eventTypes: BackendNotificationEventTypes;
+      config: KookChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "dingtalk";
+      eventTypes: BackendNotificationEventTypes;
+      config: DingtalkChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "wechatrobot";
+      eventTypes: BackendNotificationEventTypes;
+      config: WechatRobotChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "wechatapp";
+      eventTypes: BackendNotificationEventTypes;
+      config: WechatAppChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "wxpusher";
+      eventTypes: BackendNotificationEventTypes;
+      config: WxPusherChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "igot";
+      eventTypes: BackendNotificationEventTypes;
+      config: IGotChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "qmsg";
+      eventTypes: BackendNotificationEventTypes;
+      config: QmsgChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "xizhi";
+      eventTypes: BackendNotificationEventTypes;
+      config: XiZhiChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "onebot";
+      eventTypes: BackendNotificationEventTypes;
+      config: OneBotChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "feishu";
+      eventTypes: BackendNotificationEventTypes;
+      config: FeishuChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "telegram";
+      eventTypes: BackendNotificationEventTypes;
+      config: TelegramChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "serverchan";
+      eventTypes: BackendNotificationEventTypes;
+      config: ServerChanChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "discord";
+      eventTypes: BackendNotificationEventTypes;
+      config: DiscordChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "pushplus";
+      eventTypes: BackendNotificationEventTypes;
+      config: PushPlusChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "pushdeer";
+      eventTypes: BackendNotificationEventTypes;
+      config: PushDeerChannelConfig;
+    }
+  | {
+      id: string;
+      name: string;
+      enabled: boolean;
+      type: "ntfy";
+      eventTypes: BackendNotificationEventTypes;
+      config: NtfyChannelConfig;
+    };
+
 export interface SessionOptions {
   mode?: PermissionMode;
   /** Model ID (e.g., "sonnet", "opus", "qwen2.5-coder:0.5b") */
@@ -726,6 +1173,32 @@ export const api = {
     }>("/push/settings", {
       method: "PUT",
       body: JSON.stringify(settings),
+    }),
+
+  // Backend notification channels API (server-to-server providers)
+  getBackendNotificationChannels: () =>
+    fetchJSON<{
+      channels: BackendNotificationChannel[];
+      supportedChannelTypes: BackendNotificationChannelType[];
+    }>("/notification-channels"),
+
+  updateBackendNotificationChannels: (channels: BackendNotificationChannel[]) =>
+    fetchJSON<{
+      channels: BackendNotificationChannel[];
+      supportedChannelTypes: BackendNotificationChannelType[];
+    }>("/notification-channels", {
+      method: "PUT",
+      body: JSON.stringify({ channels }),
+    }),
+
+  testBackendNotificationChannel: (channelId: string, message?: string) =>
+    fetchJSON<{
+      success: boolean;
+      error?: string;
+      channelId: string;
+    }>(`/notification-channels/${encodeURIComponent(channelId)}/test`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
     }),
 
   // File API
