@@ -160,7 +160,8 @@ export function useSessionMessages(
   options: UseSessionMessagesOptions,
 ): UseSessionMessagesResult {
   const { projectId, sessionId, onLoadComplete, onLoadError } = options;
-  const { settings: serverSettings } = useServerSettings();
+  const { settings: serverSettings, isLoading: serverSettingsLoading } =
+    useServerSettings();
 
   // Core state
   const [messages, setMessages] = useState<Message[]>([]);
@@ -301,6 +302,10 @@ export function useSessionMessages(
 
   // Initial load
   useEffect(() => {
+    if (serverSettingsLoading) {
+      return;
+    }
+
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
     maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
@@ -360,6 +365,7 @@ export function useSessionMessages(
   }, [
     historyPaginationMode,
     historyPageSize,
+    serverSettingsLoading,
     projectId,
     sessionId,
     onLoadComplete,
