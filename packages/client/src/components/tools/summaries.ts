@@ -52,7 +52,7 @@ export function getToolSummary(
   if (renderer.getResultSummary) {
     const summary = safeCall(() =>
       renderer.getResultSummary?.(
-        result?.structured,
+        result?.structured ?? result?.content,
         result?.isError ?? false,
         input,
       ),
@@ -71,6 +71,13 @@ export function getToolSummary(
   // For Bash, always show description (input summary) since output is in collapsed preview
   if (toolName === "Bash") {
     return inputSummary;
+  }
+
+  if (toolName === "WriteStdin") {
+    if (inputSummary && inputSummary !== "waiting for output") {
+      return `${inputSummary} → ${resultSummary}`;
+    }
+    return resultSummary;
   }
 
   return resultSummary;

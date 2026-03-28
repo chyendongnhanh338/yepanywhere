@@ -132,6 +132,7 @@ export function normalizeCodexToolOutputWithContext(
   let structured = normalized.structured;
   let isError = normalized.isError;
   const exitCode = normalized.exitCode ?? extractExitCodeFromText(content);
+  const sessionId = extractSessionIdFromText(content);
 
   if (context?.toolName === "Grep") {
     const grepContent = extractCodexShellOutputContent(content);
@@ -140,7 +141,9 @@ export function normalizeCodexToolOutputWithContext(
 
     if (!isError || isNoMatchesResult) {
       isError = false;
-      structured = grepResult;
+      structured = sessionId
+        ? { ...grepResult, session_id: sessionId }
+        : grepResult;
       content = grepContent;
     }
   } else if (context?.toolName === "Read" && context.readShellInfo) {
@@ -150,12 +153,17 @@ export function normalizeCodexToolOutputWithContext(
         readContent,
         context.readShellInfo,
       );
-      structured = readResult;
+      structured = sessionId
+        ? { ...readResult, session_id: sessionId }
+        : readResult;
       content = readContent;
     }
   } else if (context?.toolName === "Write" && context.writeShellInfo) {
     if (!isError) {
-      structured = normalizeWriteOutput(context.writeShellInfo);
+      const writeResult = normalizeWriteOutput(context.writeShellInfo);
+      structured = sessionId
+        ? { ...writeResult, session_id: sessionId }
+        : writeResult;
     }
   }
 
@@ -640,6 +648,16 @@ function hasFailedStatus(record: Record<string, unknown>): boolean {
 function extractExitCodeFromText(output: string): number | undefined {
   const match = output.match(
     /(?:^|\n)\s*(?:Exit code:|Process exited with code)\s*(-?\d+)\b/i,
+  );
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return Number.parseInt(match[1], 10);
+}
+
+function extractSessionIdFromText(output: string): number | undefined {
+  const match = output.match(
+    /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session(?:\s+id)?)\s*:?\s*(\d+)\b/i,
   );
   if (!match?.[1]) {
     return undefined;

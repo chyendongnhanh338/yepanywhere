@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CodexSessionEntry } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
+import { preprocessMessages } from "../../../client/src/lib/preprocessMessages.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
 
@@ -746,6 +747,32 @@ describe("Codex Normalization", () => {
     expect(
       (stdinResultBlock as { is_error?: boolean }).is_error,
     ).toBeUndefined();
+  });
+
+  it("links write_stdin rows back to the exact exec_command from persisted Codex fixture", () => {
+    const entries = loadCodexFixtureEntries("write-stdin-linked-command");
+
+    const normalized = normalizeSession(buildLoadedSession(entries));
+    const renderItems = preprocessMessages(normalized.messages);
+
+    const writeStdinItem = renderItems.find(
+      (item) =>
+        item.type === "tool_call" && item.id === "call_soO8V845UAwDhcG4REHKJ0XF",
+    );
+
+    expect(writeStdinItem?.type).toBe("tool_call");
+    if (writeStdinItem?.type !== "tool_call") {
+      throw new Error("Expected write_stdin render item");
+    }
+
+    expect(writeStdinItem.toolInput).toMatchObject({
+      session_id: 37863,
+      linked_file_path: "packages/client/src/hooks/useGlobalSessions.ts",
+      linked_tool_name: "Read",
+    });
+    expect(writeStdinItem.toolResult?.content).toContain(
+      'import { useCallback, useEffect, useRef, useState } from "react";',
+    );
   });
 
   it("preserves Codex input_image blocks without dumping data URLs into text", () => {

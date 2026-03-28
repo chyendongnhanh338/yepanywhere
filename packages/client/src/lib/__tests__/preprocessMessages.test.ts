@@ -335,6 +335,138 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("links write_stdin calls to prior exec_command using session id", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-exec-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "exec-1",
+            name: "exec_command",
+            input: {
+              cmd: "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx",
+            },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-exec-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "exec-1",
+            content: "Process running with session ID 70073",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-stdin-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "stdin-1",
+            name: "WriteStdin",
+            input: { session_id: 70073, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const writeStdinCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "stdin-1",
+    );
+
+    expect(writeStdinCall?.type).toBe("tool_call");
+    if (writeStdinCall?.type === "tool_call") {
+      expect(writeStdinCall.toolInput).toMatchObject({
+        session_id: 70073,
+        linked_command:
+          "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx",
+      });
+    }
+  });
+
+  it("links write_stdin calls to prior Read tool using structured session id", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-read-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "read-1",
+            name: "Read",
+            input: {
+              file_path: "packages/client/src/hooks/useGlobalSessions.ts",
+              offset: 1,
+              limit: 260,
+            },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-read-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "read-1",
+            content: "",
+          },
+        ],
+        toolUseResult: {
+          type: "text",
+          file: {
+            filePath: "packages/client/src/hooks/useGlobalSessions.ts",
+            content:
+              'import { useCallback, useEffect, useRef, useState } from "react";\n',
+            numLines: 1,
+            startLine: 1,
+            totalLines: 1,
+          },
+          session_id: 37863,
+        },
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-stdin-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "stdin-1",
+            name: "WriteStdin",
+            input: { session_id: 37863, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const writeStdinCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "stdin-1",
+    );
+
+    expect(writeStdinCall?.type).toBe("tool_call");
+    if (writeStdinCall?.type === "tool_call") {
+      expect(writeStdinCall.toolInput).toMatchObject({
+        session_id: 37863,
+        linked_file_path: "packages/client/src/hooks/useGlobalSessions.ts",
+        linked_tool_name: "Read",
+      });
+    }
+  });
+
   it("preserves thinking blocks", () => {
     const messages: Message[] = [
       {

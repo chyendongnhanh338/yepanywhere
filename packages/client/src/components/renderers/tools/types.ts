@@ -262,6 +262,8 @@ export interface WriteStdinInput {
   session_id?: string | number;
   chars?: string;
   linked_command?: string;
+  linked_file_path?: string;
+  linked_tool_name?: string;
 }
 
 export type WriteStdinResult = string | { content?: string };

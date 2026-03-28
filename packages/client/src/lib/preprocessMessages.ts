@@ -608,27 +608,82 @@ function withLinkedCommand(input: unknown, command: string): unknown {
   return { ...input, linked_command: command };
 }
 
+function withLinkedFilePath(input: unknown, filePath: string): unknown {
+  if (!isRecord(input)) {
+    return input;
+  }
+  if (typeof input.linked_file_path === "string" && input.linked_file_path.trim()) {
+    return input;
+  }
+  return { ...input, linked_file_path: filePath };
+}
+
+function withLinkedToolName(input: unknown, toolName: string): unknown {
+  if (!isRecord(input)) {
+    return input;
+  }
+  if (typeof input.linked_tool_name === "string" && input.linked_tool_name.trim()) {
+    return input;
+  }
+  return { ...input, linked_tool_name: toolName };
+}
+
+function isCommandSessionToolName(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return (
+    normalized === "bash" ||
+    normalized === "exec_command" ||
+    normalized === "shell_command"
+  );
+}
+
+function isFileSessionToolName(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return normalized === "read" || normalized === "write" || normalized === "edit";
+}
+
+function extractFilePathFromToolInput(input: unknown): string | undefined {
+  if (!isRecord(input) || typeof input.file_path !== "string") {
+    return undefined;
+  }
+  const filePath = input.file_path.trim();
+  return filePath.length > 0 ? filePath : undefined;
+}
+
 function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
-  const sessionToCommand = new Map<string, string>();
+  const sessionToMetadata = new Map<
+    string,
+    { command?: string; filePath?: string; toolName?: string }
+  >();
 
   return items.map((item) => {
     if (item.type !== "tool_call") {
       return item;
     }
 
-    const toolName = item.toolName.toLowerCase();
-    if (toolName === "bash") {
-      const command = extractCommandFromInput(item.toolInput);
-      if (!command) {
+    if (isCommandSessionToolName(item.toolName) || isFileSessionToolName(item.toolName)) {
+      const sessionId = extractSessionIdFromToolResult(item);
+      if (!sessionId) {
         return item;
       }
-      const sessionId = extractSessionIdFromToolResult(item);
-      if (sessionId) {
-        sessionToCommand.set(sessionId, command);
-      }
+
+      const existing = sessionToMetadata.get(sessionId) ?? {};
+      const command = isCommandSessionToolName(item.toolName)
+        ? extractCommandFromInput(item.toolInput)
+        : undefined;
+      const filePath = isFileSessionToolName(item.toolName)
+        ? extractFilePathFromToolInput(item.toolInput)
+        : undefined;
+
+      sessionToMetadata.set(sessionId, {
+        command: command ?? existing.command,
+        filePath: filePath ?? existing.filePath,
+        toolName: item.toolName ?? existing.toolName,
+      });
       return item;
     }
 
+    const toolName = item.toolName.toLowerCase();
     if (toolName !== "writestdin" && toolName !== "write_stdin") {
       return item;
     }
@@ -638,14 +693,29 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       return item;
     }
 
-    const command = sessionToCommand.get(sessionId);
-    if (!command) {
+    const metadata = sessionToMetadata.get(sessionId);
+    if (!metadata) {
+      return item;
+    }
+
+    let toolInput = item.toolInput;
+    if (metadata.command) {
+      toolInput = withLinkedCommand(toolInput, metadata.command);
+    }
+    if (metadata.filePath) {
+      toolInput = withLinkedFilePath(toolInput, metadata.filePath);
+    }
+    if (metadata.toolName) {
+      toolInput = withLinkedToolName(toolInput, metadata.toolName);
+    }
+
+    if (toolInput === item.toolInput) {
       return item;
     }
 
     return {
       ...item,
-      toolInput: withLinkedCommand(item.toolInput, command),
+      toolInput,
     };
   });
 }

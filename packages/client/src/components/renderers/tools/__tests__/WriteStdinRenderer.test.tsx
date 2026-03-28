@@ -12,6 +12,10 @@ describe("WriteStdinRenderer", () => {
     cleanup();
   });
 
+  it("uses a concise display name", () => {
+    expect(writeStdinRenderer.displayName).toBe("Shell");
+  });
+
   it("renders poll intent for empty chars", () => {
     render(
       <div>
@@ -42,6 +46,29 @@ describe("WriteStdinRenderer", () => {
     );
 
     expect(screen.getByText(/command: pnpm vitest/)).toBeDefined();
+  });
+
+  it("shows linked origin label for PTY-backed reads", () => {
+    render(
+      <div>
+        {writeStdinRenderer.renderToolUse(
+          {
+            session_id: 37863,
+            chars: "",
+            linked_tool_name: "Read",
+            linked_file_path: "packages/client/src/hooks/useGlobalSessions.ts",
+            linked_command:
+              "sed -n '1,260p' packages/client/src/hooks/useGlobalSessions.ts",
+          },
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText(/origin: Read via PTY: useGlobalSessions\.ts/)).toBeDefined();
+    expect(
+      screen.getByText(/file: packages\/client\/src\/hooks\/useGlobalSessions\.ts/),
+    ).toBeDefined();
   });
 
   it("extracts exit status summary from new output envelope", () => {

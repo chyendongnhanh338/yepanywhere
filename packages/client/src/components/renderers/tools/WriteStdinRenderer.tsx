@@ -44,6 +44,57 @@ function getLinkedCommand(input: unknown): string | undefined {
   return undefined;
 }
 
+function getLinkedFilePath(input: unknown): string | undefined {
+  if (!isRecord(input) || typeof input.linked_file_path !== "string") {
+    return undefined;
+  }
+  const filePath = input.linked_file_path.trim();
+  return filePath.length > 0 ? filePath : undefined;
+}
+
+function getFileName(filePath: string): string {
+  return filePath.split("/").pop() || filePath;
+}
+
+function getLinkedToolName(input: unknown): string | undefined {
+  if (!isRecord(input) || typeof input.linked_tool_name !== "string") {
+    return undefined;
+  }
+  const toolName = input.linked_tool_name.trim();
+  return toolName.length > 0 ? toolName : undefined;
+}
+
+function getInputTargetLabel(input: unknown): string | undefined {
+  const filePath = getLinkedFilePath(input);
+  if (filePath) {
+    return getFileName(filePath);
+  }
+  return getLinkedCommand(input);
+}
+
+function getOriginLabel(input: unknown): string | undefined {
+  const linkedToolName = getLinkedToolName(input);
+  const target = getInputTargetLabel(input);
+  const prefix =
+    linkedToolName === "Read"
+      ? "Read via PTY"
+      : linkedToolName === "Write"
+        ? "Write via PTY"
+        : linkedToolName === "Edit"
+          ? "Edit via PTY"
+          : linkedToolName === "Bash"
+            ? "Command via PTY"
+            : undefined;
+
+  if (prefix && target) {
+    return `${prefix}: ${target}`;
+  }
+  if (prefix) {
+    return prefix;
+  }
+  return target;
+}
+
 function formatChars(chars: string | undefined): string {
   if (chars === undefined || chars.length === 0) {
     return "(poll)";
@@ -118,23 +169,27 @@ export const writeStdinRenderer: ToolRenderer<
   WriteStdinResult
 > = {
   tool: "WriteStdin",
-  displayName: "Command output",
+  displayName: "Shell",
 
   renderToolUse(input, _context) {
     const sessionId = getSessionId(input);
     const chars = getChars(input);
     const command = getLinkedCommand(input);
+    const filePath = getLinkedFilePath(input);
+    const originLabel = getOriginLabel(input);
     const action =
       chars === undefined || chars.length === 0
         ? "waiting for output"
         : `input: ${formatChars(chars)}`;
 
+    const originLine = originLabel ? `origin: ${originLabel}\n` : "";
+    const fileLine = filePath ? `file: ${filePath}\n` : "";
     const commandLine = command ? `command: ${command}\n` : "";
 
     return (
       <div className="bash-tool-use">
         <pre className="code-block">
-          <code>{`${commandLine}command session ${sessionId}\n${action}`}</code>
+          <code>{`${originLine}${fileLine}${commandLine}command session ${sessionId}\n${action}`}</code>
         </pre>
       </div>
     );
@@ -165,17 +220,16 @@ export const writeStdinRenderer: ToolRenderer<
   getUseSummary(input) {
     const sessionId = getSessionId(input);
     const chars = getChars(input);
-    const command = getLinkedCommand(input);
-    const commandSummary = command;
+    const inputSummary = getOriginLabel(input);
 
     if (chars === undefined || chars.length === 0) {
-      if (commandSummary) {
-        return commandSummary;
+      if (inputSummary) {
+        return inputSummary;
       }
       return "waiting for output";
     }
-    if (commandSummary) {
-      return `${commandSummary} (input)`;
+    if (inputSummary) {
+      return `${inputSummary} (input)`;
     }
     return `sent input (${sessionId})`;
   },
