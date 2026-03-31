@@ -82,6 +82,16 @@ export interface SessionPausedEvent {
   lastMessageText?: string;
 }
 
+export interface MessageQueuedEvent {
+  type: "message-queued";
+  sessionId: string;
+  projectId: UrlProjectId;
+  processId?: string;
+  provider?: string;
+  text?: string;
+  timestamp: string;
+}
+
 export interface SessionMetadataChangedEvent {
   type: "session-metadata-changed";
   sessionId: string;
@@ -163,6 +173,7 @@ interface ActivityEventMap {
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
   "session-paused": SessionPausedEvent;
+  "message-queued": MessageQueuedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
   // Connection events
   "browser-tab-connected": BrowserTabConnectedEvent;
@@ -418,6 +429,7 @@ class ActivityBus {
       "session-seen",
       "process-state-changed",
       "session-paused",
+      "message-queued",
       "session-metadata-changed",
       "browser-tab-connected",
       "browser-tab-disconnected",

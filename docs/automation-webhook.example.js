@@ -7,7 +7,7 @@
 //
 // Event shape:
 // - ctx.event.project.*  -> id, name, path
-// - ctx.event.session.*  -> id, lastUserMessageText
+// - ctx.event.session.*  -> id, lastUserMessageText, queuedMessageText, queuedCommandName, queuedCommandArgs
 // - ctx.event.process.*  -> id, provider, model, executor, permissionMode
 // - ctx.event.tool.*     -> request, summary, toolName (waiting-input only)
 
@@ -38,6 +38,15 @@ function buildPayload(event) {
     };
   }
 
+  if (event.type === "message-queued") {
+    return {
+      ...payload,
+      queuedMessageText: event.session.queuedMessageText,
+      queuedCommandName: event.session.queuedCommandName,
+      queuedCommandArgs: event.session.queuedCommandArgs,
+    };
+  }
+
   return {
     ...payload,
     tool: {
@@ -55,6 +64,14 @@ function buildPayload(event) {
 
 export default async function onEvent(ctx) {
   const payload = buildPayload(ctx.event);
+
+  if (ctx.event.type === "message-queued") {
+    await ctx.log("message callback triggered", {
+      sessionId: ctx.event.session.id,
+      queuedMessageText: ctx.event.session.queuedMessageText,
+      queuedCommandName: ctx.event.session.queuedCommandName,
+    });
+  }
 
   await ctx.log("sending automation webhook", {
     url: CONFIG.url,

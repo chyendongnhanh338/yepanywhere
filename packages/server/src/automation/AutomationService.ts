@@ -1,16 +1,22 @@
 import { basename } from "node:path";
 import vm from "node:vm";
 import type { InputRequest, UrlProjectId } from "@yep-anywhere/shared";
+import type { SessionMetadataService } from "../metadata/index.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import { decodeProjectId } from "../supervisor/types.js";
 import type {
   BusEvent,
   EventBus,
+  MessageQueuedEvent,
   SessionPausedEvent,
 } from "../watcher/index.js";
 
-type AutomationEventType = "tool-approval" | "user-question" | "session-paused";
+type AutomationEventType =
+  | "tool-approval"
+  | "user-question"
+  | "session-paused"
+  | "message-queued";
 
 interface AutomationProjectContext {
   id: string;
@@ -21,6 +27,9 @@ interface AutomationProjectContext {
 interface AutomationSessionContext {
   id: string;
   lastUserMessageText?: string;
+  queuedMessageText?: string;
+  queuedCommandName?: string;
+  queuedCommandArgs?: string[];
 }
 
 interface AutomationProcessContext {
@@ -57,7 +66,14 @@ interface AutomationSessionPausedEvent extends AutomationBaseEvent {
   lastMessageText?: string;
 }
 
-type AutomationEvent = AutomationInputEvent | AutomationSessionPausedEvent;
+interface AutomationMessageQueuedEvent extends AutomationBaseEvent {
+  type: "message-queued";
+}
+
+type AutomationEvent =
+  | AutomationInputEvent
+  | AutomationSessionPausedEvent
+  | AutomationMessageQueuedEvent;
 
 interface AutomationActions {
   approve: () => Promise<{ ok: boolean; dryRun: boolean }>;
@@ -67,10 +83,38 @@ interface AutomationActions {
     feedback?: string,
   ) => Promise<{ ok: boolean; dryRun: boolean }>;
   sendMessage: (text: string) => Promise<{ ok: boolean; dryRun: boolean }>;
+  sendCommand: (
+    command: string,
+    args?: string | string[],
+  ) => Promise<{ ok: boolean; dryRun: boolean }>;
   resume: (
     message: string,
     options?: { projectPath?: string; projectId?: string },
   ) => Promise<{ ok: boolean; dryRun: boolean }>;
+}
+
+interface AutomationContextApi {
+  getGlobalInstructions: () => string | undefined;
+  setGlobalInstructions: (
+    text?: string,
+  ) => Promise<{ ok: boolean; dryRun: boolean; value?: string }>;
+  appendGlobalInstructions: (
+    text: string,
+    options?: { separator?: string },
+  ) => Promise<{ ok: boolean; dryRun: boolean; value?: string }>;
+  clearGlobalInstructions: () => Promise<{ ok: boolean; dryRun: boolean }>;
+  getSessionVariables: () => Record<string, unknown>;
+  getSessionVariable: (key: string) => unknown;
+  setSessionVariable: (
+    key: string,
+    value: unknown,
+  ) => Promise<{ ok: boolean; dryRun: boolean; value?: unknown }>;
+  setSessionVariables: (variables: Record<string, unknown>) => Promise<{
+    ok: boolean;
+    dryRun: boolean;
+    value?: Record<string, unknown>;
+  }>;
+  clearSessionVariables: () => Promise<{ ok: boolean; dryRun: boolean }>;
 }
 
 interface AutomationContext {
@@ -88,12 +132,14 @@ interface AutomationContext {
     ): Promise<Response>;
   };
   actions: AutomationActions;
+  context: AutomationContextApi;
 }
 
 interface AutomationServiceOptions {
   eventBus: EventBus;
   supervisor: Supervisor;
   serverSettingsService: ServerSettingsService;
+  sessionMetadataService?: SessionMetadataService;
 }
 
 const SCRIPT_TIMEOUT_MS = 5000;
@@ -102,12 +148,14 @@ export class AutomationService {
   private readonly eventBus: EventBus;
   private readonly supervisor: Supervisor;
   private readonly serverSettingsService: ServerSettingsService;
+  private readonly sessionMetadataService?: SessionMetadataService;
   private readonly unsubscribe: () => void;
 
   constructor(options: AutomationServiceOptions) {
     this.eventBus = options.eventBus;
     this.supervisor = options.supervisor;
     this.serverSettingsService = options.serverSettingsService;
+    this.sessionMetadataService = options.sessionMetadataService;
 
     this.unsubscribe = this.eventBus.subscribe((event) => {
       void this.handleBusEvent(event);
@@ -171,6 +219,10 @@ export class AutomationService {
           executor: process?.executor,
         },
       };
+    }
+
+    if (event.type === "message-queued") {
+      return this.buildMessageQueuedEvent(event);
     }
 
     if (event.type !== "process-state-changed") {
@@ -269,6 +321,7 @@ export class AutomationService {
             request: this.request.bind(this),
           },
           actions: this.createActions(event, dryRun),
+          context: this.createContextApi(event, dryRun),
         }),
       );
     } catch (error) {
@@ -393,20 +446,11 @@ export class AutomationService {
         return { ok, dryRun: false };
       },
       sendMessage: async (text: string) => {
-        const process = this.supervisor.getProcessForSession(event.session.id);
-        if (!process) {
-          return { ok: false, dryRun };
-        }
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run sendMessage",
-            event.session.id,
-            text,
-          );
-          return { ok: true, dryRun: true };
-        }
-        const result = process.queueMessage({ text });
-        return { ok: result.success, dryRun: false };
+        return this.queueSessionMessage(event, text, dryRun, "sendMessage");
+      },
+      sendCommand: async (command: string, args?: string | string[]) => {
+        const text = this.formatCommandMessage(command, args);
+        return this.queueSessionMessage(event, text, dryRun, "sendCommand");
       },
       resume: async (
         message: string,
@@ -436,6 +480,251 @@ export class AutomationService {
         return { ok: true, dryRun: false };
       },
     };
+  }
+
+  private createContextApi(
+    event: AutomationEvent,
+    dryRun: boolean,
+  ): AutomationContextApi {
+    return {
+      getGlobalInstructions: () => {
+        return this.serverSettingsService.getSetting("globalInstructions");
+      },
+      setGlobalInstructions: async (text?: string) => {
+        const value = this.normalizeGlobalInstructions(text);
+        if (dryRun) {
+          console.log("[Automation] dry-run setGlobalInstructions", value);
+          return { ok: true, dryRun: true, value };
+        }
+        await this.serverSettingsService.updateSettings({
+          globalInstructions: value,
+        });
+        return { ok: true, dryRun: false, value };
+      },
+      appendGlobalInstructions: async (
+        text: string,
+        options?: { separator?: string },
+      ) => {
+        const addition = this.normalizeGlobalInstructions(text);
+        const current = this.normalizeGlobalInstructions(
+          this.serverSettingsService.getSetting("globalInstructions"),
+        );
+        const value = addition
+          ? [current, addition]
+              .filter(Boolean)
+              .join(options?.separator ?? "\n\n")
+              .trim()
+          : current;
+
+        if (dryRun) {
+          console.log("[Automation] dry-run appendGlobalInstructions", value);
+          return { ok: true, dryRun: true, value };
+        }
+        await this.serverSettingsService.updateSettings({
+          globalInstructions: value || undefined,
+        });
+        return { ok: true, dryRun: false, value: value || undefined };
+      },
+      clearGlobalInstructions: async () => {
+        if (dryRun) {
+          console.log("[Automation] dry-run clearGlobalInstructions");
+          return { ok: true, dryRun: true };
+        }
+        await this.serverSettingsService.updateSettings({
+          globalInstructions: undefined,
+        });
+        return { ok: true, dryRun: false };
+      },
+      getSessionVariables: () => {
+        return (
+          this.sessionMetadataService?.getSessionVariables(event.session.id) ??
+          {}
+        );
+      },
+      getSessionVariable: (key: string) => {
+        return this.sessionMetadataService?.getSessionVariable(
+          event.session.id,
+          key,
+        );
+      },
+      setSessionVariable: async (key: string, value: unknown) => {
+        const normalizedKey = key.trim();
+        if (!normalizedKey) {
+          throw new Error("setSessionVariable() requires a key");
+        }
+        if (dryRun) {
+          console.log(
+            "[Automation] dry-run setSessionVariable",
+            event.session.id,
+            normalizedKey,
+            value,
+          );
+          return { ok: true, dryRun: true, value };
+        }
+        this.ensureSessionMetadataService();
+        const sessionMetadataService = this.sessionMetadataService;
+        await sessionMetadataService.setSessionVariable(
+          event.session.id,
+          normalizedKey,
+          value,
+        );
+        return { ok: true, dryRun: false, value };
+      },
+      setSessionVariables: async (variables: Record<string, unknown>) => {
+        if (dryRun) {
+          console.log(
+            "[Automation] dry-run setSessionVariables",
+            event.session.id,
+            variables,
+          );
+          return { ok: true, dryRun: true, value: variables };
+        }
+        this.ensureSessionMetadataService();
+        const sessionMetadataService = this.sessionMetadataService;
+        await sessionMetadataService.setSessionVariables(
+          event.session.id,
+          variables,
+        );
+        return { ok: true, dryRun: false, value: variables };
+      },
+      clearSessionVariables: async () => {
+        if (dryRun) {
+          console.log(
+            "[Automation] dry-run clearSessionVariables",
+            event.session.id,
+          );
+          return { ok: true, dryRun: true };
+        }
+        this.ensureSessionMetadataService();
+        const sessionMetadataService = this.sessionMetadataService;
+        await sessionMetadataService.clearSessionVariables(event.session.id);
+        return { ok: true, dryRun: false };
+      },
+    };
+  }
+
+  private buildMessageQueuedEvent(
+    event: MessageQueuedEvent,
+  ): AutomationMessageQueuedEvent | null {
+    const process = this.supervisor.getProcessForSession(event.sessionId);
+    const projectPath = this.resolveProjectPath(
+      event.sessionId,
+      event.projectId,
+    );
+    if (!projectPath) {
+      return null;
+    }
+
+    const parsedCommand = this.parseCommandText(event.text);
+    return {
+      type: "message-queued",
+      timestamp: event.timestamp,
+      project: {
+        id: event.projectId,
+        name: basename(projectPath),
+        path: projectPath,
+      },
+      session: {
+        id: event.sessionId,
+        lastUserMessageText: process
+          ? this.extractLastUserMessageText(process)
+          : event.text,
+        queuedMessageText: event.text,
+        queuedCommandName: parsedCommand?.name,
+        queuedCommandArgs: parsedCommand?.args,
+      },
+      process: {
+        id: event.processId ?? process?.id,
+        provider: event.provider ?? process?.provider,
+        permissionMode: process?.permissionMode,
+        model: process?.resolvedModel,
+        executor: process?.executor,
+      },
+    };
+  }
+
+  private async queueSessionMessage(
+    event: AutomationEvent,
+    text: string,
+    dryRun: boolean,
+    action: "sendMessage" | "sendCommand",
+  ): Promise<{ ok: boolean; dryRun: boolean }> {
+    const projectPath = this.resolveProjectPath(
+      event.session.id,
+      event.project.id as UrlProjectId,
+    );
+    if (!projectPath) {
+      return { ok: false, dryRun };
+    }
+    if (dryRun) {
+      console.log(`[Automation] dry-run ${action}`, event.session.id, text);
+      return { ok: true, dryRun: true };
+    }
+
+    const result = await this.supervisor.queueMessageToSession(
+      event.session.id,
+      projectPath,
+      { text },
+    );
+    return { ok: result.success, dryRun: false };
+  }
+
+  private formatCommandMessage(
+    command: string,
+    args?: string | string[],
+  ): string {
+    const normalizedCommand = command.trim().replace(/^\/+/, "");
+    if (!normalizedCommand) {
+      throw new Error("sendCommand() requires a command name");
+    }
+
+    const formattedArgs = Array.isArray(args)
+      ? args
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .join(" ")
+      : args?.trim();
+
+    return formattedArgs
+      ? `/${normalizedCommand} ${formattedArgs}`
+      : `/${normalizedCommand}`;
+  }
+
+  private parseCommandText(
+    text: string | undefined,
+  ): { name: string; args: string[] } | null {
+    const trimmed = text?.trim();
+    if (!trimmed?.startsWith("/")) {
+      return null;
+    }
+
+    const body = trimmed.slice(1).trim();
+    if (!body) {
+      return null;
+    }
+
+    const parts = body.split(/\s+/).filter(Boolean);
+    const [name, ...args] = parts;
+    if (!name) {
+      return null;
+    }
+
+    return { name, args };
+  }
+
+  private normalizeGlobalInstructions(
+    text: string | undefined,
+  ): string | undefined {
+    const normalized = text?.trim();
+    return normalized ? normalized.slice(0, 10_000) : undefined;
+  }
+
+  private ensureSessionMetadataService(): void {
+    if (!this.sessionMetadataService) {
+      throw new Error(
+        "session metadata service is not available for session variable helpers",
+      );
+    }
   }
 
   private resolveProjectPath(

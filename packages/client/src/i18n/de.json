@@ -28,7 +28,7 @@
   "settingsAgentContextTitle": "Agentenkontext",
   "settingsAgentContextDescription": "Benutzerdefinierte Anweisungen für alle Sitzungen",
   "settingsAutomationTitle": "Automatisierung",
-  "settingsAutomationDescription": "Serverseitige Callbacks für Freigaben, Fragen und pausierte Sitzungen",
+  "settingsAutomationDescription": "Serverseitige Callbacks für Freigaben, Fragen, pausierte Sitzungen und eingereihte Nachrichten",
   "settingsNotificationsTitle": "Benachrichtigungen",
   "settingsNotificationsDescription": "Einstellungen für Push-Benachrichtigungen",
   "settingsDevicesTitle": "Geräte",

@@ -1,6 +1,7 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AutomationService } from "../../src/automation/AutomationService.js";
+import type { SessionMetadataService } from "../../src/metadata/index.js";
 import type { ServerSettingsService } from "../../src/services/ServerSettingsService.js";
 import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
@@ -9,6 +10,7 @@ describe("AutomationService", () => {
   let eventBus: EventBus;
   let mockSupervisor: Supervisor;
   let mockServerSettingsService: ServerSettingsService;
+  let mockSessionMetadataService: SessionMetadataService;
   const fetchMock = vi.fn<typeof fetch>();
 
   const projectPath = "/tmp/automation-project";
@@ -22,6 +24,11 @@ describe("AutomationService", () => {
     mockSupervisor = {
       getProcessForSession: vi.fn(),
       resumeSession: vi.fn(async () => ({ id: "proc-1" })),
+      queueMessageToSession: vi.fn(async () => ({
+        success: true,
+        process: { id: "proc-1" },
+        restarted: false,
+      })),
     } as unknown as Supervisor;
 
     mockServerSettingsService = {
@@ -34,7 +41,25 @@ describe("AutomationService", () => {
         automationScript:
           "export default async function onEvent(ctx) { await ctx.actions.resume('continue', { projectId: ctx.event.project.id }); }",
       })),
+      getSetting: vi.fn((key: string) =>
+        key === "globalInstructions" ? "Existing instructions" : undefined,
+      ),
+      updateSettings: vi.fn(async (updates) => ({
+        serviceWorkerEnabled: true,
+        persistRemoteSessionsToDisk: false,
+        globalInstructions: updates.globalInstructions,
+      })),
     } as unknown as ServerSettingsService;
+
+    mockSessionMetadataService = {
+      getSessionVariables: vi.fn(() => ({ priority: "high" })),
+      getSessionVariable: vi.fn((_sessionId: string, key: string) =>
+        key === "priority" ? "high" : undefined,
+      ),
+      setSessionVariable: vi.fn(async () => {}),
+      setSessionVariables: vi.fn(async () => {}),
+      clearSessionVariables: vi.fn(async () => {}),
+    } as unknown as SessionMetadataService;
 
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -536,5 +561,209 @@ describe("AutomationService", () => {
         lastUserMessageText: "approve the edit if it is safe",
       }),
     );
+  });
+
+  it("queues slash commands through sendCommand", async () => {
+    vi.mocked(mockSupervisor.getProcessForSession).mockReturnValue({
+      id: "proc-1",
+      provider: "claude",
+      permissionMode: "default",
+      resolvedModel: "claude-sonnet-4-5",
+      executor: "devbox",
+      projectPath,
+      getMessageHistory: () => [],
+    } as unknown as ReturnType<Supervisor["getProcessForSession"]>);
+
+    vi.mocked(mockServerSettingsService.getSettings).mockReturnValue({
+      serviceWorkerEnabled: true,
+      persistRemoteSessionsToDisk: false,
+      automationEnabled: true,
+      automationDryRun: false,
+      automationEventTypes: ["session-paused"],
+      automationScript:
+        "export default async function onEvent(ctx) { await ctx.actions.sendCommand('model', 'sonnet'); }",
+    });
+
+    new AutomationService({
+      eventBus,
+      supervisor: mockSupervisor,
+      serverSettingsService: mockServerSettingsService,
+    });
+
+    eventBus.emit({
+      type: "session-paused",
+      sessionId: "session-1",
+      projectId,
+      reason: "error",
+      timestamp: new Date().toISOString(),
+    });
+
+    await vi.waitFor(() => {
+      expect(mockSupervisor.queueMessageToSession).toHaveBeenCalledWith(
+        "session-1",
+        projectPath,
+        { text: "/model sonnet" },
+      );
+    });
+  });
+
+  it("supports reading and updating global instructions through ctx.context", async () => {
+    vi.mocked(mockServerSettingsService.getSettings).mockReturnValue({
+      serviceWorkerEnabled: true,
+      persistRemoteSessionsToDisk: false,
+      automationEnabled: true,
+      automationDryRun: false,
+      automationEventTypes: ["session-paused"],
+      automationScript: `
+        export default async function onEvent(ctx) {
+          const current = ctx.context.getGlobalInstructions();
+          await ctx.context.appendGlobalInstructions("Added by automation");
+          await ctx.log("global instructions", current);
+        }
+      `,
+    });
+
+    new AutomationService({
+      eventBus,
+      supervisor: mockSupervisor,
+      serverSettingsService: mockServerSettingsService,
+    });
+
+    eventBus.emit({
+      type: "session-paused",
+      sessionId: "session-1",
+      projectId,
+      reason: "error",
+      timestamp: new Date().toISOString(),
+    });
+
+    await vi.waitFor(() => {
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        globalInstructions: "Existing instructions\n\nAdded by automation",
+      });
+    });
+  });
+
+  it("exposes queued message details on message-queued events", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    vi.mocked(mockSupervisor.getProcessForSession).mockReturnValue({
+      id: "proc-1",
+      provider: "claude",
+      permissionMode: "default",
+      resolvedModel: "claude-sonnet-4-5",
+      executor: "devbox",
+      projectPath,
+      getMessageHistory: () => [
+        {
+          type: "user",
+          message: { role: "user", content: "/model sonnet" },
+        },
+      ],
+    } as unknown as ReturnType<Supervisor["getProcessForSession"]>);
+
+    vi.mocked(mockServerSettingsService.getSettings).mockReturnValue({
+      serviceWorkerEnabled: true,
+      persistRemoteSessionsToDisk: false,
+      automationEnabled: true,
+      automationDryRun: false,
+      automationEventTypes: ["message-queued"],
+      automationScript: `
+        export default async function onEvent(ctx) {
+          await ctx.http.request("https://example.test/message", {
+            method: "POST",
+            json: {
+              queuedMessageText: ctx.event.session.queuedMessageText,
+              queuedCommandName: ctx.event.session.queuedCommandName,
+              queuedCommandArgs: ctx.event.session.queuedCommandArgs,
+              lastUserMessageText: ctx.event.session.lastUserMessageText,
+            },
+          });
+        }
+      `,
+    });
+
+    new AutomationService({
+      eventBus,
+      supervisor: mockSupervisor,
+      serverSettingsService: mockServerSettingsService,
+    });
+
+    eventBus.emit({
+      type: "message-queued",
+      sessionId: "session-1",
+      projectId,
+      processId: "proc-1",
+      provider: "claude",
+      text: "/model sonnet",
+      timestamp: new Date().toISOString(),
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(
+      JSON.stringify({
+        queuedMessageText: "/model sonnet",
+        queuedCommandName: "model",
+        queuedCommandArgs: ["sonnet"],
+        lastUserMessageText: "/model sonnet",
+      }),
+    );
+  });
+
+  it("supports session-scoped variables through ctx.context", async () => {
+    vi.mocked(mockServerSettingsService.getSettings).mockReturnValue({
+      serviceWorkerEnabled: true,
+      persistRemoteSessionsToDisk: false,
+      automationEnabled: true,
+      automationDryRun: false,
+      automationEventTypes: ["session-paused"],
+      automationScript: `
+        export default async function onEvent(ctx) {
+          const current = ctx.context.getSessionVariable("priority");
+          const all = ctx.context.getSessionVariables();
+          await ctx.context.setSessionVariable("lastAction", "resume");
+          await ctx.context.setSessionVariables({
+            ...all,
+            retries: 2,
+            priority: current,
+          });
+        }
+      `,
+    });
+
+    new AutomationService({
+      eventBus,
+      supervisor: mockSupervisor,
+      serverSettingsService: mockServerSettingsService,
+      sessionMetadataService: mockSessionMetadataService,
+    });
+
+    eventBus.emit({
+      type: "session-paused",
+      sessionId: "session-1",
+      projectId,
+      reason: "error",
+      timestamp: new Date().toISOString(),
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        mockSessionMetadataService.setSessionVariable,
+      ).toHaveBeenCalledWith("session-1", "lastAction", "resume");
+      expect(
+        mockSessionMetadataService.setSessionVariables,
+      ).toHaveBeenCalledWith("session-1", {
+        priority: "high",
+        retries: 2,
+      });
+    });
   });
 });

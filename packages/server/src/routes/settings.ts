@@ -276,12 +276,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         "tool-approval",
         "user-question",
         "session-paused",
+        "message-queued",
       ]);
       const next = body.automationEventTypes.filter(
         (
           value,
-        ): value is "tool-approval" | "user-question" | "session-paused" =>
-          typeof value === "string" && allowed.has(value),
+        ): value is
+          | "tool-approval"
+          | "user-question"
+          | "session-paused"
+          | "message-queued" => typeof value === "string" && allowed.has(value),
       );
       updates.automationEventTypes = Array.from(new Set(next));
     }

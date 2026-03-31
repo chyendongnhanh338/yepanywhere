@@ -28,7 +28,7 @@
   "settingsAgentContextTitle": "代理上下文",
   "settingsAgentContextDescription": "所有会话的自定义指令",
   "settingsAutomationTitle": "自动化",
-  "settingsAutomationDescription": "针对审批、提问和会话暂停的服务端回调",
+  "settingsAutomationDescription": "针对审批、提问、会话暂停和消息入队的服务端回调",
   "settingsNotificationsTitle": "通知",
   "settingsNotificationsDescription": "推送通知偏好",
   "settingsDevicesTitle": "设备",

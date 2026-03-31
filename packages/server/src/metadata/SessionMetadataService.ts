@@ -22,6 +22,8 @@ export interface SessionMetadata {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Session-scoped automation variables persisted with the session */
+  sessionVariables?: Record<string, unknown>;
 }
 
 export interface SessionMetadataState {
@@ -100,14 +102,20 @@ export class SessionMetadataService {
    * Get metadata for a session.
    */
   getMetadata(sessionId: string): SessionMetadata | undefined {
-    return this.state.sessions[sessionId];
+    const metadata = this.state.sessions[sessionId];
+    return metadata ? this.cloneMetadata(metadata) : undefined;
   }
 
   /**
    * Get all session metadata.
    */
   getAllMetadata(): Record<string, SessionMetadata> {
-    return { ...this.state.sessions };
+    return Object.fromEntries(
+      Object.entries(this.state.sessions).map(([sessionId, metadata]) => [
+        sessionId,
+        this.cloneMetadata(metadata),
+      ]),
+    );
   }
 
   /**
@@ -193,6 +201,84 @@ export class SessionMetadataService {
   }
 
   /**
+   * Get all session variables for a session.
+   */
+  getSessionVariables(sessionId: string): Record<string, unknown> | undefined {
+    const variables = this.state.sessions[sessionId]?.sessionVariables;
+    return variables ? this.cloneValue(variables) : undefined;
+  }
+
+  /**
+   * Get a single session variable value.
+   */
+  getSessionVariable(sessionId: string, key: string): unknown {
+    if (!key) return undefined;
+    const variables = this.state.sessions[sessionId]?.sessionVariables;
+    return variables ? this.cloneValue(variables[key]) : undefined;
+  }
+
+  /**
+   * Set or clear a single session variable.
+   * Passing undefined clears the key.
+   */
+  async setSessionVariable(
+    sessionId: string,
+    key: string,
+    value: unknown,
+  ): Promise<void> {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      throw new Error("session variable key is required");
+    }
+
+    this.updateSessionMetadata(sessionId, (metadata) => {
+      const nextVariables = {
+        ...(metadata.sessionVariables ?? {}),
+      };
+
+      if (value === undefined) {
+        delete nextVariables[normalizedKey];
+      } else {
+        nextVariables[normalizedKey] = this.cloneValue(value);
+      }
+
+      return {
+        ...metadata,
+        sessionVariables:
+          Object.keys(nextVariables).length > 0 ? nextVariables : undefined,
+      };
+    });
+    await this.save();
+  }
+
+  /**
+   * Replace all session variables for a session.
+   * Passing undefined or an empty object clears the variable map.
+   */
+  async setSessionVariables(
+    sessionId: string,
+    variables: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const nextVariables = this.normalizeSessionVariables(variables);
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      sessionVariables: nextVariables,
+    }));
+    await this.save();
+  }
+
+  /**
+   * Clear all session variables for a session.
+   */
+  async clearSessionVariables(sessionId: string): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      sessionVariables: undefined,
+    }));
+    await this.save();
+  }
+
+  /**
    * Update metadata for a session (title, archived, starred).
    */
   async updateMetadata(
@@ -241,6 +327,12 @@ export class SessionMetadataService {
     if (updated.model) cleaned.model = updated.model;
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;
+    if (
+      updated.sessionVariables &&
+      Object.keys(updated.sessionVariables).length
+    ) {
+      cleaned.sessionVariables = this.cloneValue(updated.sessionVariables);
+    }
 
     if (Object.keys(cleaned).length === 0) {
       // Remove the entry entirely if empty
@@ -261,6 +353,41 @@ export class SessionMetadataService {
       this.state.sessions = rest;
       await this.save();
     }
+  }
+
+  private normalizeSessionVariables(
+    variables: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | undefined {
+    if (!variables) {
+      return undefined;
+    }
+
+    const cleaned: Record<string, unknown> = {};
+    for (const [rawKey, rawValue] of Object.entries(variables)) {
+      const key = rawKey.trim();
+      if (!key || rawValue === undefined) {
+        continue;
+      }
+      cleaned[key] = this.cloneValue(rawValue);
+    }
+
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+
+  private cloneMetadata(metadata: SessionMetadata): SessionMetadata {
+    return {
+      ...metadata,
+      sessionVariables: metadata.sessionVariables
+        ? this.cloneValue(metadata.sessionVariables)
+        : undefined,
+    };
+  }
+
+  private cloneValue<T>(value: T): T {
+    if (value === undefined) {
+      return value;
+    }
+    return JSON.parse(JSON.stringify(value)) as T;
   }
 
   /**

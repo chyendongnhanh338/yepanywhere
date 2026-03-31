@@ -395,6 +395,7 @@ export function createApp(options: AppOptions): AppResult {
       eventBus: options.eventBus,
       supervisor,
       serverSettingsService: options.serverSettingsService,
+      sessionMetadataService: options.sessionMetadataService,
     });
   }
 

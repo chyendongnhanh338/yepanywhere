@@ -39,7 +39,7 @@ export interface ServerSettings {
   automationEnabled?: boolean;
   /** Types of events that should trigger automation callbacks */
   automationEventTypes?: Array<
-    "tool-approval" | "user-question" | "session-paused"
+    "tool-approval" | "user-question" | "session-paused" | "message-queued"
   >;
   /** JavaScript source for the automation callback handler */
   automationScript?: string;
@@ -52,7 +52,12 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
   automationEnabled: false,
-  automationEventTypes: ["tool-approval", "user-question", "session-paused"],
+  automationEventTypes: [
+    "tool-approval",
+    "user-question",
+    "session-paused",
+    "message-queued",
+  ],
   automationDryRun: true,
 };
 

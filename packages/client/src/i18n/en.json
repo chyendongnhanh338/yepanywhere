@@ -28,7 +28,7 @@
   "settingsAgentContextTitle": "Agent Context",
   "settingsAgentContextDescription": "Custom instructions for all sessions",
   "settingsAutomationTitle": "Automation",
-  "settingsAutomationDescription": "Server-side callbacks for approvals, questions, and paused sessions",
+  "settingsAutomationDescription": "Server-side callbacks for approvals, questions, paused sessions, and queued messages",
   "settingsNotificationsTitle": "Notifications",
   "settingsNotificationsDescription": "Push notification preferences",
   "settingsDevicesTitle": "Devices",

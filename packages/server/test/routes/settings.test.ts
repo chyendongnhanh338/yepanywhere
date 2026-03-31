@@ -19,6 +19,7 @@ describe("Settings Routes", () => {
         "tool-approval",
         "user-question",
         "session-paused",
+        "message-queued",
       ],
     };
 
@@ -144,7 +145,12 @@ describe("Settings Routes", () => {
         body: JSON.stringify({
           automationEnabled: true,
           automationDryRun: false,
-          automationEventTypes: ["tool-approval", "session-paused", "bogus"],
+          automationEventTypes: [
+            "tool-approval",
+            "session-paused",
+            "message-queued",
+            "bogus",
+          ],
           automationScript:
             "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
         }),
@@ -157,12 +163,17 @@ describe("Settings Routes", () => {
       expect(json.settings.automationEventTypes).toEqual([
         "tool-approval",
         "session-paused",
+        "message-queued",
       ]);
       expect(json.settings.automationScript).toContain("onEvent");
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         automationEnabled: true,
         automationDryRun: false,
-        automationEventTypes: ["tool-approval", "session-paused"],
+        automationEventTypes: [
+          "tool-approval",
+          "session-paused",
+          "message-queued",
+        ],
         automationScript:
           "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
       });

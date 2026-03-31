@@ -507,4 +507,60 @@ describe("SessionMetadataService", () => {
       expect(service.getMetadata("session-1")).toBeUndefined();
     });
   });
+
+  describe("sessionVariables", () => {
+    it("sets and reads session variables", async () => {
+      await service.initialize();
+
+      await service.setSessionVariable("session-1", "priority", "high");
+      await service.setSessionVariable("session-1", "retries", 2);
+
+      expect(service.getSessionVariable("session-1", "priority")).toBe("high");
+      expect(service.getSessionVariables("session-1")).toEqual({
+        priority: "high",
+        retries: 2,
+      });
+    });
+
+    it("clears an individual session variable when set to undefined", async () => {
+      await service.initialize();
+      await service.setSessionVariables("session-1", {
+        priority: "high",
+        retries: 2,
+      });
+
+      await service.setSessionVariable("session-1", "priority", undefined);
+
+      expect(service.getSessionVariables("session-1")).toEqual({
+        retries: 2,
+      });
+    });
+
+    it("persists session variables to disk", async () => {
+      await service.initialize();
+      await service.setSessionVariables("session-1", {
+        priority: "high",
+        nested: { enabled: true },
+      });
+
+      const newService = new SessionMetadataService({ dataDir: testDir });
+      await newService.initialize();
+
+      expect(newService.getSessionVariables("session-1")).toEqual({
+        priority: "high",
+        nested: { enabled: true },
+      });
+    });
+
+    it("clears all session variables", async () => {
+      await service.initialize();
+      await service.setSessionVariables("session-1", {
+        priority: "high",
+      });
+
+      await service.clearSessionVariables("session-1");
+
+      expect(service.getSessionVariables("session-1")).toBeUndefined();
+    });
+  });
 });

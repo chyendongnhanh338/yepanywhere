@@ -10,6 +10,7 @@
 // - Ignore normal idle/completed pauses to avoid infinite loops
 // - Only recover if the last user message mentions "next step"
 // - Resume with a short recovery prompt that tells the agent to continue
+// - Available helpers also include ctx.actions.sendCommand(...) and ctx.context.*
 
 const CONFIG = {
   recoverOnError: true,

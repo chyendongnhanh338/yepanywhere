@@ -14,6 +14,10 @@ const AUTOMATION_EVENT_OPTIONS = [
     value: "session-paused" as const,
     label: "Paused Sessions",
   },
+  {
+    value: "message-queued" as const,
+    label: "Queued Messages",
+  },
 ];
 
 export function AutomationSettings() {
@@ -66,7 +70,7 @@ export function AutomationSettings() {
       <h2>Automation</h2>
       <p className="settings-section-description">
         Configure server-side JavaScript callbacks that run when approvals,
-        questions, or paused sessions occur.
+        questions, paused sessions, or queued messages occur.
       </p>
 
       <div className="settings-group">
@@ -172,7 +176,7 @@ export function AutomationSettings() {
               setAutomationSaveError(null);
             }}
             placeholder={
-              "async function onEvent(ctx) {\n  ctx.log(ctx.event.type);\n}"
+              "async function onEvent(ctx) {\n  ctx.log(ctx.event.type);\n  // await ctx.actions.sendCommand('model', 'sonnet');\n}"
             }
           />
           <div
@@ -185,7 +189,7 @@ export function AutomationSettings() {
           >
             <span className="settings-hint">
               Helpers include `ctx.log(...)`, `ctx.http.request(...)`, and
-              `ctx.actions.*`.
+              `ctx.actions.*`, `ctx.context.*`.
             </span>
             <button
               type="button"
@@ -199,6 +203,19 @@ export function AutomationSettings() {
           {(automationSaveError || error) && (
             <p className="settings-warning">{automationSaveError || error}</p>
           )}
+          <p className="settings-hint" style={{ marginTop: "var(--space-2)" }}>
+            Event shape: `ctx.event.project.*`, `ctx.event.session.*`,
+            `ctx.event.process.*`, and `ctx.event.tool.*` for waiting-input
+            events only.
+          </p>
+          <p className="settings-hint">
+            Mutating helpers respect Dry Run. `sendCommand("model", "sonnet")`
+            queues `/model sonnet`.
+          </p>
+          <p className="settings-hint">
+            `ctx.context.*` can modify both global instructions and
+            session-level variables for the current session.
+          </p>
         </div>
       </div>
     </section>

@@ -250,6 +250,43 @@ describe("Supervisor", () => {
       });
     });
 
+    it("emits message-queued when a message is queued to an active session", async () => {
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
+
+      const supervisorWithBus = new Supervisor({
+        sdk: mockSdk,
+        idleTimeoutMs: 100,
+        eventBus,
+      });
+
+      mockSdk.addScenario(createMockScenario("sess-123", "Hello!"));
+
+      const process = await supervisorWithBus.resumeSession(
+        "sess-123",
+        "/tmp/test",
+        { text: "first" },
+      );
+
+      await supervisorWithBus.queueMessageToSession(
+        process.sessionId,
+        "/tmp/test",
+        { text: "/model sonnet" },
+      );
+
+      await vi.waitFor(() => {
+        expect(
+          events.some(
+            (event) =>
+              event.type === "message-queued" &&
+              event.sessionId === "sess-123" &&
+              event.text === "/model sonnet",
+          ),
+        ).toBe(true);
+      });
+    });
+
     it("emits session-status-changed event when session starts", async () => {
       const eventBus = new EventBus();
       const events: BusEvent[] = [];

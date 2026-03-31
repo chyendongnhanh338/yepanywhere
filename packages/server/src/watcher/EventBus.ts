@@ -103,6 +103,24 @@ export interface SessionPausedEvent {
   lastMessageText?: string;
 }
 
+/** Event emitted when a message is queued to an active session */
+export interface MessageQueuedEvent {
+  type: "message-queued";
+  sessionId: string;
+  projectId: UrlProjectId;
+  processId?: string;
+  provider?:
+    | "claude"
+    | "gemini"
+    | "codex"
+    | "claude-ollama"
+    | "gemini-acp"
+    | "codex-oss"
+    | "opencode";
+  timestamp: string;
+  text?: string;
+}
+
 /** Event emitted when a request is added to the worker queue */
 export interface QueueRequestAddedEvent {
   type: "queue-request-added";
@@ -233,6 +251,7 @@ export type BusEvent =
   | SessionSeenEvent
   | ProcessStateEvent
   | SessionPausedEvent
+  | MessageQueuedEvent
   | QueueRequestAddedEvent
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent

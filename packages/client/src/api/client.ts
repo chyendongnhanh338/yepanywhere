@@ -1045,7 +1045,7 @@ export interface ServerSettings {
   automationEnabled?: boolean;
   /** Which event types should trigger automation callbacks */
   automationEventTypes?: Array<
-    "tool-approval" | "user-question" | "session-paused"
+    "tool-approval" | "user-question" | "session-paused" | "message-queued"
   >;
   /** JavaScript source for the automation callback handler */
   automationScript?: string;

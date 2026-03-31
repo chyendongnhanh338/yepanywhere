@@ -28,7 +28,7 @@
   "settingsAgentContextTitle": "Contexte de l'agent",
   "settingsAgentContextDescription": "Instructions personnalisées pour toutes les sessions",
   "settingsAutomationTitle": "Automatisation",
-  "settingsAutomationDescription": "Callbacks côté serveur pour les approbations, les questions et les sessions en pause",
+  "settingsAutomationDescription": "Callbacks côté serveur pour les approbations, les questions, les sessions en pause et les messages en file d'attente",
   "settingsNotificationsTitle": "Notifications",
   "settingsNotificationsDescription": "Préférences des notifications push",
   "settingsDevicesTitle": "Appareils",

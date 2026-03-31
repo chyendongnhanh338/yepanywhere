@@ -19,6 +19,7 @@ import type {
 } from "../sdk/types.js";
 import type {
   EventBus,
+  MessageQueuedEvent,
   ProcessStateEvent,
   SessionAbortedEvent,
   SessionCreatedEvent,
@@ -1045,6 +1046,7 @@ export class Supervisor {
         );
 
         if ("id" in result) {
+          this.emitMessageQueued(result, message);
           return { success: true, process: result, restarted: true };
         }
         return { success: false, error: "Request was queued or failed" };
@@ -1058,6 +1060,7 @@ export class Supervisor {
 
     const result = process.queueMessage(message);
     if (result.success) {
+      this.emitMessageQueued(process, message);
       return { success: true, process, restarted: false };
     }
 
@@ -1146,6 +1149,21 @@ export class Supervisor {
       type: "session-aborted",
       sessionId,
       projectId,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventBus.emit(event);
+  }
+
+  private emitMessageQueued(process: Process, message: UserMessage): void {
+    if (!this.eventBus) return;
+
+    const event: MessageQueuedEvent = {
+      type: "message-queued",
+      sessionId: process.sessionId,
+      projectId: process.projectId,
+      processId: process.id,
+      provider: process.provider,
+      text: message.text,
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
