@@ -562,7 +562,7 @@ export class AutomationService {
           return { ok: true, dryRun: true, value };
         }
         this.ensureSessionMetadataService();
-        const sessionMetadataService = this.sessionMetadataService;
+        const sessionMetadataService = this.getSessionMetadataService();
         await sessionMetadataService.setSessionVariable(
           event.session.id,
           normalizedKey,
@@ -580,7 +580,7 @@ export class AutomationService {
           return { ok: true, dryRun: true, value: variables };
         }
         this.ensureSessionMetadataService();
-        const sessionMetadataService = this.sessionMetadataService;
+        const sessionMetadataService = this.getSessionMetadataService();
         await sessionMetadataService.setSessionVariables(
           event.session.id,
           variables,
@@ -596,7 +596,7 @@ export class AutomationService {
           return { ok: true, dryRun: true };
         }
         this.ensureSessionMetadataService();
-        const sessionMetadataService = this.sessionMetadataService;
+        const sessionMetadataService = this.getSessionMetadataService();
         await sessionMetadataService.clearSessionVariables(event.session.id);
         return { ok: true, dryRun: false };
       },
@@ -725,6 +725,16 @@ export class AutomationService {
         "session metadata service is not available for session variable helpers",
       );
     }
+  }
+
+  private getSessionMetadataService(): SessionMetadataService {
+    const sessionMetadataService = this.sessionMetadataService;
+    if (!sessionMetadataService) {
+      throw new Error(
+        "session metadata service is not available for session variable helpers",
+      );
+    }
+    return sessionMetadataService;
   }
 
   private resolveProjectPath(
