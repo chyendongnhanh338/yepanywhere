@@ -222,9 +222,6 @@ export class ProjectScanner {
       // (e.g. "C:\Users\sox/Documents/webvam" vs "C:\Users\sox\Documents\webvam")
       // are recognized as the same path.
       const projectPath = rawProjectPath.replace(/\\/g, "/");
-      if (seenPaths.has(projectPath)) return; // exact path duplicate
-      seenPaths.add(projectPath);
-
       const normalized = normalizeProjectPathForDedup(projectPath);
       const existingIdx = normalizedIndex.get(normalized);
 
@@ -232,6 +229,15 @@ export class ProjectScanner {
         // Cross-machine duplicate — merge into existing project
         const existing = projects[existingIdx];
         if (!existing) return;
+        const existingSessionDirs = new Set([
+          existing.sessionDir,
+          ...(existing.mergedSessionDirs ?? []),
+        ]);
+        if (existingSessionDirs.has(sessionDir)) {
+          return;
+        }
+
+        seenPaths.add(projectPath);
         existing.sessionCount += sessionCount;
         if (!existing.mergedSessionDirs) {
           existing.mergedSessionDirs = [];
@@ -263,6 +269,8 @@ export class ProjectScanner {
           existing.name = basename(projectPath);
         }
       } else {
+        if (seenPaths.has(projectPath)) return; // exact path duplicate
+        seenPaths.add(projectPath);
         normalizedIndex.set(normalized, projects.length);
         projects.push({
           id: encodeProjectId(projectPath),

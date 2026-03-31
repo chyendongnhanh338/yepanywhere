@@ -195,3 +195,50 @@ describe("ProjectScanner cache", () => {
     expect(afterEvent?.id).toBe(encodeProjectId("/home/user/project-two"));
   });
 });
+
+describe("ProjectScanner cross-host merging", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      tempDirs
+        .splice(0)
+        .map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+
+  it("merges session counts for the same project path across host directories", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+
+    await createClaudeProject(
+      projectsDir,
+      "host-a",
+      "/home/user/shared-project",
+      "sess-1",
+    );
+    await createClaudeProject(
+      projectsDir,
+      "host-b",
+      "/home/user/shared-project",
+      "sess-2",
+    );
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+    });
+
+    const projects = await scanner.listProjects();
+    const project = projects.find((p) => p.path === "/home/user/shared-project");
+
+    expect(projects).toHaveLength(1);
+    expect(project).toBeDefined();
+    expect(project?.sessionCount).toBe(2);
+    expect(project?.sessionDir).toContain("host-a");
+    expect(project?.mergedSessionDirs).toContain(
+      join(projectsDir, "host-b", encodePath("/home/user/shared-project")),
+    );
+  });
+});
