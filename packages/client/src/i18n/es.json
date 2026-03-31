@@ -27,6 +27,8 @@
   "settingsModelDescription": "Modelo de Claude y ajustes de razonamiento",
   "settingsAgentContextTitle": "Contexto del agente",
   "settingsAgentContextDescription": "Instrucciones personalizadas para todas las sesiones",
+  "settingsAutomationTitle": "Automatización",
+  "settingsAutomationDescription": "Callbacks del servidor para aprobaciones, preguntas y sesiones en pausa",
   "settingsNotificationsTitle": "Notificaciones",
   "settingsNotificationsDescription": "Preferencias de notificaciones push",
   "settingsDevicesTitle": "Dispositivos",

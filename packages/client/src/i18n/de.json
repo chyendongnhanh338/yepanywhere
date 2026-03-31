@@ -27,6 +27,8 @@
   "settingsModelDescription": "Claude-Modell und Denk-Einstellungen",
   "settingsAgentContextTitle": "Agentenkontext",
   "settingsAgentContextDescription": "Benutzerdefinierte Anweisungen für alle Sitzungen",
+  "settingsAutomationTitle": "Automatisierung",
+  "settingsAutomationDescription": "Serverseitige Callbacks für Freigaben, Fragen und pausierte Sitzungen",
   "settingsNotificationsTitle": "Benachrichtigungen",
   "settingsNotificationsDescription": "Einstellungen für Push-Benachrichtigungen",
   "settingsDevicesTitle": "Geräte",

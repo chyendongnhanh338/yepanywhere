@@ -27,6 +27,8 @@
   "settingsModelDescription": "Claude モデルと思考設定",
   "settingsAgentContextTitle": "エージェントコンテキスト",
   "settingsAgentContextDescription": "すべてのセッションのカスタム指示",
+  "settingsAutomationTitle": "自動化",
+  "settingsAutomationDescription": "承認、質問、停止中セッション向けのサーバー側コールバック",
   "settingsNotificationsTitle": "通知",
   "settingsNotificationsDescription": "プッシュ通知の設定",
   "settingsDevicesTitle": "デバイス",
