@@ -231,7 +231,9 @@ describe("ProjectScanner cross-host merging", () => {
     });
 
     const projects = await scanner.listProjects();
-    const project = projects.find((p) => p.path === "/home/user/shared-project");
+    const project = projects.find(
+      (p) => p.path === "/home/user/shared-project",
+    );
 
     expect(projects).toHaveLength(1);
     expect(project).toBeDefined();
