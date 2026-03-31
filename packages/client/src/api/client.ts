@@ -1041,4 +1041,14 @@ export interface ServerSettings {
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
   newSessionDefaults?: NewSessionDefaults;
+  /** Whether server-side automation callbacks should run */
+  automationEnabled?: boolean;
+  /** Which event types should trigger automation callbacks */
+  automationEventTypes?: Array<
+    "tool-approval" | "user-question" | "session-paused"
+  >;
+  /** JavaScript source for the automation callback handler */
+  automationScript?: string;
+  /** When true, automation logs only and skips mutating actions */
+  automationDryRun?: boolean;
 }

@@ -70,6 +70,18 @@ export interface ProcessStateEvent {
   timestamp: string;
 }
 
+export interface SessionPausedEvent {
+  type: "session-paused";
+  sessionId: string;
+  projectId: UrlProjectId;
+  reason: "idle" | "completed" | "error";
+  processId?: string;
+  provider?: string;
+  timestamp: string;
+  summary?: string;
+  lastMessageText?: string;
+}
+
 export interface SessionMetadataChangedEvent {
   type: "session-metadata-changed";
   sessionId: string;
@@ -150,6 +162,7 @@ interface ActivityEventMap {
   "session-updated": SessionUpdatedEvent;
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
+  "session-paused": SessionPausedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
   // Connection events
   "browser-tab-connected": BrowserTabConnectedEvent;
@@ -404,6 +417,7 @@ class ActivityBus {
       "session-updated",
       "session-seen",
       "process-state-changed",
+      "session-paused",
       "session-metadata-changed",
       "browser-tab-connected",
       "browser-tab-disconnected",

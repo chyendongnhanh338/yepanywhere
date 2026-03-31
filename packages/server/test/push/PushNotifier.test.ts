@@ -8,6 +8,7 @@ import type {
   BusEvent,
   EventBus,
   ProcessStateEvent,
+  SessionPausedEvent,
 } from "../../src/watcher/EventBus.js";
 
 describe("PushNotifier", () => {
@@ -206,6 +207,37 @@ describe("PushNotifier", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(mockPushService.sendToAll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handling session paused events", () => {
+    it("should send session-halted notification for paused sessions", async () => {
+      new PushNotifier({
+        eventBus: mockEventBus,
+        pushService: mockPushService,
+        supervisor: mockSupervisor,
+      });
+
+      const event: SessionPausedEvent = {
+        type: "session-paused",
+        sessionId: "session-1",
+        projectId: testProjectId,
+        processId: "proc-1",
+        provider: "claude",
+        reason: "completed",
+        timestamp: new Date().toISOString(),
+      };
+
+      eventHandler?.(event);
+
+      await vi.waitFor(() => {
+        expect(mockPushService.sendToAll).toHaveBeenCalled();
+      });
+
+      const payload = vi.mocked(mockPushService.sendToAll).mock.calls[0][0];
+      expect(payload.type).toBe("session-halted");
+      expect(payload.reason).toBe("completed");
+      expect(payload.projectName).toBe("test-project");
     });
   });
 

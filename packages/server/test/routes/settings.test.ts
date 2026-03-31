@@ -13,6 +13,13 @@ describe("Settings Routes", () => {
     settings = {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
+      automationEnabled: false,
+      automationDryRun: true,
+      automationEventTypes: [
+        "tool-approval",
+        "user-question",
+        "session-paused",
+      ],
     };
 
     mockServerSettingsService = {
@@ -124,6 +131,41 @@ describe("Settings Routes", () => {
       const json = await response.json();
       expect(json.error).toContain("Invalid ChromeOS host alias");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("accepts automation settings updates", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          automationEnabled: true,
+          automationDryRun: false,
+          automationEventTypes: ["tool-approval", "session-paused", "bogus"],
+          automationScript:
+            "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.settings.automationEnabled).toBe(true);
+      expect(json.settings.automationDryRun).toBe(false);
+      expect(json.settings.automationEventTypes).toEqual([
+        "tool-approval",
+        "session-paused",
+      ]);
+      expect(json.settings.automationScript).toContain("onEvent");
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        automationEnabled: true,
+        automationDryRun: false,
+        automationEventTypes: ["tool-approval", "session-paused"],
+        automationScript:
+          "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
+      });
     });
   });
 

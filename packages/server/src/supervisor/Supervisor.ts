@@ -22,6 +22,7 @@ import type {
   ProcessStateEvent,
   SessionAbortedEvent,
   SessionCreatedEvent,
+  SessionPausedEvent,
   SessionStatusEvent,
   SessionUpdatedEvent,
   WorkerActivityEvent,
@@ -36,6 +37,7 @@ import {
 } from "./WorkerQueue.js";
 import {
   DEFAULT_IDLE_PREEMPT_THRESHOLD_MS,
+  type Message,
   type ProcessInfo,
   type ProcessOptions,
   type SessionOwnership,
@@ -128,6 +130,12 @@ export interface SupervisorOptions {
   onSessionExecutor?: OnSessionExecutorCallback;
   /** Callback to fetch session summary for initial metadata reconciliation */
   onSessionSummary?: OnSessionSummaryCallback;
+  /** Callback when a session pauses, completes, or errors out */
+  onSessionPaused?: (
+    event: Omit<SessionPausedEvent, "type" | "timestamp"> & {
+      timestamp?: string;
+    },
+  ) => void;
 }
 
 export class Supervisor {
@@ -146,6 +154,11 @@ export class Supervisor {
   private workerQueue: WorkerQueue;
   private onSessionExecutor?: OnSessionExecutorCallback;
   private onSessionSummary?: OnSessionSummaryCallback;
+  private onSessionPaused?: (
+    event: Omit<SessionPausedEvent, "type" | "timestamp"> & {
+      timestamp?: string;
+    },
+  ) => void;
   private staleCheckTimer: ReturnType<typeof setInterval>;
 
   constructor(options: SupervisorOptions) {
@@ -164,6 +177,7 @@ export class Supervisor {
     });
     this.onSessionExecutor = options.onSessionExecutor;
     this.onSessionSummary = options.onSessionSummary;
+    this.onSessionPaused = options.onSessionPaused;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -1285,9 +1299,29 @@ export class Supervisor {
             event.state.type,
             pendingInputType,
           );
+          if (event.state.type === "idle") {
+            this.emitSessionPaused({
+              sessionId: process.sessionId,
+              projectId: process.projectId,
+              processId: process.id,
+              provider: process.provider,
+              reason: "idle",
+              lastMessageText: this.extractLastMessageText(process),
+            });
+          }
         }
         // Emit worker activity on any state change (affects hasActiveWork)
         this.emitWorkerActivity();
+      } else if (event.type === "terminated") {
+        this.emitSessionPaused({
+          sessionId: process.sessionId,
+          projectId: process.projectId,
+          processId: process.id,
+          provider: process.provider,
+          reason: "error",
+          summary: event.reason,
+          lastMessageText: this.extractLastMessageText(process),
+        });
       }
     });
   }
@@ -1331,6 +1365,17 @@ export class Supervisor {
     this.emitOwnershipChange(process.sessionId, process.projectId, {
       owner: "none",
     });
+
+    if (!process.terminationReason) {
+      this.emitSessionPaused({
+        sessionId: process.sessionId,
+        projectId: process.projectId,
+        processId: process.id,
+        provider: process.provider,
+        reason: "completed",
+        lastMessageText: this.extractLastMessageText(process),
+      });
+    }
 
     // Emit agent activity change to notify clients that this session is no longer running
     // This is needed for real-time updates (e.g., AgentsNavItem indicator)
@@ -1498,6 +1543,42 @@ export class Supervisor {
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
+  }
+
+  private emitSessionPaused(
+    event: Omit<SessionPausedEvent, "type" | "timestamp"> & {
+      timestamp?: string;
+    },
+  ): void {
+    this.onSessionPaused?.(event);
+  }
+
+  private extractLastMessageText(process: Process): string | undefined {
+    const history = process.getMessageHistory();
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const message = history[index] as Message | undefined;
+      const content = message?.message?.content;
+      if (typeof content === "string" && content.trim()) {
+        return content.trim();
+      }
+      if (Array.isArray(content)) {
+        const textBlock = content.find(
+          (block): block is { type: string; text?: string } =>
+            !!block &&
+            typeof block === "object" &&
+            "type" in block &&
+            "text" in block,
+        );
+        if (
+          textBlock &&
+          typeof textBlock.text === "string" &&
+          textBlock.text.trim()
+        ) {
+          return textBlock.text.trim();
+        }
+      }
+    }
+    return undefined;
   }
 
   /**

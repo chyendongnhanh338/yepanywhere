@@ -13,6 +13,7 @@ import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { AutomationSettings } from "./AutomationSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
 import { EmulatorSettings } from "./EmulatorSettings";
@@ -29,6 +30,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   model: ModelSettings,
   "agent-context": AgentContextSettings,
+  automation: AutomationSettings,
   notifications: NotificationsSettings,
   devices: DevicesSettings,
   "local-access": LocalAccessSettings,

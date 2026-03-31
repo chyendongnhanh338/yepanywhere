@@ -3,6 +3,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { Hono } from "hono";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
+import { AutomationService } from "./automation/index.js";
 import type { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
@@ -367,6 +368,7 @@ export function createApp(options: AppOptions): AppResult {
     );
     return resolved?.summary ?? null;
   };
+  let automationService: AutomationService | undefined;
   const supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
@@ -383,7 +385,18 @@ export function createApp(options: AppOptions): AppResult {
           Promise.resolve()
       : undefined,
     onSessionSummary: getSessionSummary,
+    onSessionPaused: options.eventBus
+      ? (event) => automationService?.noteSessionPaused(event)
+      : undefined,
   });
+
+  if (options.eventBus && options.serverSettingsService) {
+    automationService = new AutomationService({
+      eventBus: options.eventBus,
+      supervisor,
+      serverSettingsService: options.serverSettingsService,
+    });
+  }
 
   // Create external session tracker if eventBus is available
   const externalTracker = options.eventBus

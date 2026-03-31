@@ -83,6 +83,26 @@ export interface ProcessStateEvent {
   timestamp: string;
 }
 
+/** Event emitted when a session pauses, completes, or errors out. */
+export interface SessionPausedEvent {
+  type: "session-paused";
+  sessionId: string;
+  projectId: UrlProjectId;
+  reason: "idle" | "completed" | "error";
+  processId?: string;
+  provider?:
+    | "claude"
+    | "gemini"
+    | "codex"
+    | "claude-ollama"
+    | "gemini-acp"
+    | "codex-oss"
+    | "opencode";
+  timestamp: string;
+  summary?: string;
+  lastMessageText?: string;
+}
+
 /** Event emitted when a request is added to the worker queue */
 export interface QueueRequestAddedEvent {
   type: "queue-request-added";
@@ -212,6 +232,7 @@ export type BusEvent =
   | BackendReloadedEvent
   | SessionSeenEvent
   | ProcessStateEvent
+  | SessionPausedEvent
   | QueueRequestAddedEvent
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent

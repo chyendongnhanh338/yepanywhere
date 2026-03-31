@@ -219,6 +219,37 @@ describe("Supervisor", () => {
       });
     });
 
+    it("emits session-paused when a session becomes idle", async () => {
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
+
+      const supervisorWithBus = new Supervisor({
+        sdk: mockSdk,
+        idleTimeoutMs: 100,
+        eventBus,
+        onSessionPaused: (event) =>
+          eventBus.emit({
+            type: "session-paused",
+            timestamp: new Date().toISOString(),
+            ...event,
+          }),
+      });
+
+      mockSdk.addScenario(createMockScenario("sess-123", "Hello!"));
+
+      await supervisorWithBus.startSession("/tmp/test", { text: "hi" });
+
+      await vi.waitFor(() => {
+        expect(
+          events.some(
+            (event) =>
+              event.type === "session-paused" && event.reason === "idle",
+          ),
+        ).toBe(true);
+      });
+    });
+
     it("emits session-status-changed event when session starts", async () => {
       const eventBus = new EventBus();
       const events: BusEvent[] = [];
