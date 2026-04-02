@@ -62,9 +62,12 @@ export function useProjects() {
   const [error, setError] = useState<Error | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFetchedRef = useRef(false);
+  const hasResolvedInitialFetchRef = useRef(false);
 
   const fetch = useCallback(async () => {
-    setLoading(true);
+    // Preserve existing UI during background refetches triggered by activity
+    // events so pages don't bounce back to their initial loading state.
+    setLoading(!hasResolvedInitialFetchRef.current);
     setError(null);
     try {
       const data = await api.getProjects();
@@ -72,6 +75,7 @@ export function useProjects() {
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
+      hasResolvedInitialFetchRef.current = true;
       setLoading(false);
     }
   }, []);
