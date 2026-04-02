@@ -4,6 +4,7 @@ import {
   AssistantEntrySchema,
 } from "./entry/AssistantEntrySchema.js";
 import { FileHistorySnapshotEntrySchema } from "./entry/FileHistorySnapshotEntrySchema.js";
+import { MetadataEntrySchema } from "./entry/MetadataEntrySchema.js";
 import {
   type ProgressEntry,
   ProgressEntrySchema,
@@ -24,6 +25,7 @@ export const SessionEntrySchema = z.union([
   SystemEntrySchema,
   FileHistorySnapshotEntrySchema,
   QueueOperationEntrySchema,
+  MetadataEntrySchema,
 ]);
 
 export type SessionEntry = z.infer<typeof SessionEntrySchema>;
@@ -38,6 +40,7 @@ export type ClaudeSidechainEntry = SidechainEntry;
 export * from "./entry/AssistantEntrySchema.js";
 export * from "./entry/BaseEntrySchema.js";
 export * from "./entry/FileHistorySnapshotEntrySchema.js";
+export * from "./entry/MetadataEntrySchema.js";
 export * from "./entry/normalizeQueueOperationContent.js";
 export * from "./entry/ProgressEntrySchema.js";
 export * from "./entry/QueueOperationEntrySchema.js";
