@@ -85,6 +85,7 @@ import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import { Supervisor } from "./supervisor/Supervisor.js";
 import type { Project } from "./supervisor/types.js";
 import type { EventBus } from "./watcher/index.js";
+import { LifecycleWebhookService } from "./webhooks/LifecycleWebhookService.js";
 
 export interface AppOptions {
   /** Legacy SDK interface for mock SDK (for testing) */
@@ -406,6 +407,14 @@ export function createApp(options: AppOptions): AppResult {
       pushService: options.pushService,
       supervisor,
       connectedBrowsers: options.connectedBrowsers,
+    });
+  }
+
+  if (options.eventBus && options.serverSettingsService) {
+    new LifecycleWebhookService({
+      eventBus: options.eventBus,
+      supervisor,
+      serverSettingsService: options.serverSettingsService,
     });
   }
 

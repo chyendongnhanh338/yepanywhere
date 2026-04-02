@@ -358,5 +358,56 @@ describe("Supervisor", () => {
         vi.useRealTimers();
       }
     });
+
+    it("emits process-terminated when the underlying process exits unexpectedly", async () => {
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async () => {
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "terminated-session-1",
+            };
+            throw new Error("process exited");
+          }
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {},
+          };
+        },
+      };
+
+      const supervisorWithBus = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+        eventBus,
+      });
+
+      await supervisorWithBus.startSession("/tmp/test", {
+        text: "Trigger failure",
+      });
+
+      await vi.waitFor(() => {
+        expect(
+          events.some((event) => event.type === "process-terminated"),
+        ).toBe(true);
+      });
+
+      const terminated = events.find(
+        (event): event is Extract<BusEvent, { type: "process-terminated" }> =>
+          event.type === "process-terminated",
+      );
+      expect(terminated).toMatchObject({
+        type: "process-terminated",
+        sessionId: "terminated-session-1",
+        reason: "underlying process terminated",
+      });
+    });
   });
 });

@@ -35,12 +35,22 @@ export interface ServerSettings {
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
   newSessionDefaults?: NewSessionDefaults;
+  /** Whether lifecycle webhook delivery is enabled */
+  lifecycleWebhooksEnabled?: boolean;
+  /** External webhook URL that receives lifecycle events */
+  lifecycleWebhookUrl?: string;
+  /** Optional bearer token used for lifecycle webhook delivery */
+  lifecycleWebhookToken?: string;
+  /** When true, include dryRun=true in lifecycle webhook payloads */
+  lifecycleWebhookDryRun?: boolean;
 }
 
 /** Default settings */
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
+  lifecycleWebhooksEnabled: false,
+  lifecycleWebhookDryRun: true,
 };
 
 /** Stored state with version for migrations */

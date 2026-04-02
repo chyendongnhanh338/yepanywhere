@@ -16,6 +16,7 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
 import { EmulatorSettings } from "./EmulatorSettings";
+import { LifecycleWebhooksSettings } from "./LifecycleWebhooksSettings";
 import { LocalAccessSettings } from "./LocalAccessSettings";
 import { ModelSettings } from "./ModelSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
@@ -30,6 +31,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   model: ModelSettings,
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
+  webhooks: LifecycleWebhooksSettings,
   devices: DevicesSettings,
   "local-access": LocalAccessSettings,
   remote: RemoteAccessSettings,

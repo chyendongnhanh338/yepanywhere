@@ -83,6 +83,17 @@ export interface ProcessStateEvent {
   timestamp: string;
 }
 
+/** Event emitted when a process terminates unexpectedly. */
+export interface ProcessTerminatedEvent {
+  type: "process-terminated";
+  sessionId: string;
+  projectId: UrlProjectId;
+  processId: string;
+  provider: string;
+  reason: string;
+  timestamp: string;
+}
+
 /** Event emitted when a request is added to the worker queue */
 export interface QueueRequestAddedEvent {
   type: "queue-request-added";
@@ -212,6 +223,7 @@ export type BusEvent =
   | BackendReloadedEvent
   | SessionSeenEvent
   | ProcessStateEvent
+  | ProcessTerminatedEvent
   | QueueRequestAddedEvent
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent

@@ -20,6 +20,7 @@ import type {
 import type {
   EventBus,
   ProcessStateEvent,
+  ProcessTerminatedEvent,
   SessionAbortedEvent,
   SessionCreatedEvent,
   SessionStatusEvent,
@@ -1288,6 +1289,14 @@ export class Supervisor {
         }
         // Emit worker activity on any state change (affects hasActiveWork)
         this.emitWorkerActivity();
+      } else if (event.type === "terminated") {
+        this.emitProcessTerminated(
+          process.sessionId,
+          process.projectId,
+          process.id,
+          process.provider,
+          event.reason,
+        );
       }
     });
   }
@@ -1495,6 +1504,27 @@ export class Supervisor {
       projectId,
       activity,
       pendingInputType,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventBus.emit(event);
+  }
+
+  private emitProcessTerminated(
+    sessionId: string,
+    projectId: UrlProjectId,
+    processId: string,
+    provider: ProviderName,
+    reason: string,
+  ): void {
+    if (!this.eventBus) return;
+
+    const event: ProcessTerminatedEvent = {
+      type: "process-terminated",
+      sessionId,
+      projectId,
+      processId,
+      provider,
+      reason,
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);

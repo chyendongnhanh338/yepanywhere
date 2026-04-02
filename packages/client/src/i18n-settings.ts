@@ -89,6 +89,12 @@ export function getSettingsCategories(
       description: t("settingsNotificationsDescription"),
     },
     {
+      id: "webhooks",
+      label: t("settingsWebhooksTitle"),
+      icon: "🪝",
+      description: t("settingsWebhooksDescription"),
+    },
+    {
       id: "devices",
       label: t("settingsDevicesTitle"),
       icon: "📱",

@@ -125,6 +125,31 @@ describe("Settings Routes", () => {
       expect(json.error).toContain("Invalid ChromeOS host alias");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
+
+    it("accepts lifecycle webhook settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lifecycleWebhooksEnabled: true,
+          lifecycleWebhookUrl: "https://example.com/hook",
+          lifecycleWebhookToken: "secret",
+          lifecycleWebhookDryRun: false,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        lifecycleWebhooksEnabled: true,
+        lifecycleWebhookUrl: "https://example.com/hook",
+        lifecycleWebhookToken: "secret",
+        lifecycleWebhookDryRun: false,
+      });
+    });
   });
 
   describe("POST /remote-executors/:host/test", () => {

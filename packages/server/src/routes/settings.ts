@@ -252,6 +252,38 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       updates.newSessionDefaults = parsedDefaults;
     }
 
+    if (typeof body.lifecycleWebhooksEnabled === "boolean") {
+      updates.lifecycleWebhooksEnabled = body.lifecycleWebhooksEnabled;
+    }
+    if (typeof body.lifecycleWebhookDryRun === "boolean") {
+      updates.lifecycleWebhookDryRun = body.lifecycleWebhookDryRun;
+    }
+    if ("lifecycleWebhookUrl" in body) {
+      if (
+        body.lifecycleWebhookUrl === undefined ||
+        body.lifecycleWebhookUrl === null ||
+        body.lifecycleWebhookUrl === ""
+      ) {
+        updates.lifecycleWebhookUrl = undefined;
+      } else if (typeof body.lifecycleWebhookUrl === "string") {
+        updates.lifecycleWebhookUrl = body.lifecycleWebhookUrl.slice(0, 2000);
+      }
+    }
+    if ("lifecycleWebhookToken" in body) {
+      if (
+        body.lifecycleWebhookToken === undefined ||
+        body.lifecycleWebhookToken === null ||
+        body.lifecycleWebhookToken === ""
+      ) {
+        updates.lifecycleWebhookToken = undefined;
+      } else if (typeof body.lifecycleWebhookToken === "string") {
+        updates.lifecycleWebhookToken = body.lifecycleWebhookToken.slice(
+          0,
+          5000,
+        );
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
