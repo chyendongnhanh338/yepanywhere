@@ -79,7 +79,7 @@ export function AutomationSettings() {
       <h2>Automation</h2>
       <p className="settings-section-description">
         Send session events to an external automation webhook and let that
-        service decide which follow-up actions to run.
+        service call Yep's REST API to run follow-up actions.
       </p>
 
       <div className="settings-group">
@@ -107,7 +107,8 @@ export function AutomationSettings() {
           <div className="settings-item-info">
             <strong>Dry Run</strong>
             <p>
-              Log automation actions without executing mutating session changes.
+              Include a dry-run flag in the webhook payload so your external
+              service can skip follow-up REST API calls.
             </p>
           </div>
           <label className="toggle-switch">
@@ -170,7 +171,7 @@ export function AutomationSettings() {
             <strong>Automation Webhook</strong>
             <p>
               Configure the external service endpoint that receives automation
-              events and returns actions for the server to execute.
+              events and then calls Yep's REST API directly.
             </p>
           </div>
           <input
@@ -235,13 +236,12 @@ export function AutomationSettings() {
             `globalInstructions` and `sessionVariables`.
           </p>
           <p className="settings-hint">
-            Supported response actions include `approve`, `deny`, `answer`,
-            `send-message`, `send-command`, `resume`, and instruction or
-            session-variable updates.
+            Your webhook should call Yep's REST API directly for approvals,
+            resume, messages, settings updates, and session variables.
           </p>
           <p className="settings-hint">
-            Mutating actions still respect Dry Run. Automation-generated queued
-            messages are not re-sent back through the `message-queued` trigger.
+            Automation-generated queued messages are not re-sent back through
+            the `message-queued` trigger.
           </p>
         </div>
       </div>

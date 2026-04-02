@@ -74,25 +74,6 @@ type AutomationEvent =
   | AutomationSessionPausedEvent
   | AutomationMessageQueuedEvent;
 
-type AutomationAction =
-  | { type: "approve" }
-  | { type: "deny"; feedback?: string }
-  | { type: "answer"; answers: Record<string, string>; feedback?: string }
-  | { type: "send-message"; text: string }
-  | { type: "send-command"; command: string; args?: string | string[] }
-  | {
-      type: "resume";
-      message: string;
-      projectPath?: string;
-      projectId?: string;
-    }
-  | { type: "set-global-instructions"; text?: string }
-  | { type: "append-global-instructions"; text: string; separator?: string }
-  | { type: "clear-global-instructions" }
-  | { type: "set-session-variable"; key: string; value: unknown }
-  | { type: "set-session-variables"; variables: Record<string, unknown> }
-  | { type: "clear-session-variables" };
-
 interface AutomationWebhookRequest {
   event: AutomationEvent;
   dryRun: boolean;
@@ -100,10 +81,6 @@ interface AutomationWebhookRequest {
     globalInstructions?: string;
     sessionVariables: Record<string, unknown>;
   };
-}
-
-interface AutomationWebhookResponse {
-  actions?: AutomationAction[];
 }
 
 interface AutomationServiceOptions {
@@ -294,209 +271,8 @@ export class AutomationService {
         console.error("[Automation] Webhook failed:", response.status);
         return;
       }
-
-      const body = (await response.json()) as AutomationWebhookResponse;
-      const actions = Array.isArray(body.actions) ? body.actions : [];
-      for (const action of actions) {
-        await this.executeAction(event, action, dryRun);
-      }
     } catch (error) {
       console.error("[Automation] Webhook execution failed:", error);
-    }
-  }
-
-  private async executeAction(
-    event: AutomationEvent,
-    action: AutomationAction,
-    dryRun: boolean,
-  ): Promise<void> {
-    switch (action.type) {
-      case "approve": {
-        this.assertInputEvent(event, "approve");
-        if (dryRun) {
-          console.log("[Automation] dry-run approve", event.session.id);
-          return;
-        }
-        const process = this.supervisor.getProcessForSession(event.session.id);
-        process?.respondToInput(event.tool.request.id, "approve", undefined);
-        return;
-      }
-      case "deny": {
-        this.assertInputEvent(event, "deny");
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run deny",
-            event.session.id,
-            action.feedback,
-          );
-          return;
-        }
-        const process = this.supervisor.getProcessForSession(event.session.id);
-        process?.respondToInput(
-          event.tool.request.id,
-          "deny",
-          undefined,
-          action.feedback,
-        );
-        return;
-      }
-      case "answer": {
-        this.assertInputEvent(event, "answer");
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run answer",
-            event.session.id,
-            action.answers,
-          );
-          return;
-        }
-        const process = this.supervisor.getProcessForSession(event.session.id);
-        process?.respondToInput(
-          event.tool.request.id,
-          "approve",
-          action.answers,
-          action.feedback,
-        );
-        return;
-      }
-      case "send-message": {
-        await this.queueSessionMessage(event, action.text, dryRun);
-        return;
-      }
-      case "send-command": {
-        await this.queueSessionMessage(
-          event,
-          this.formatCommandMessage(action.command, action.args),
-          dryRun,
-        );
-        return;
-      }
-      case "resume": {
-        const projectPath =
-          action.projectPath ??
-          this.resolveProjectPath(
-            event.session.id,
-            (action.projectId ?? event.project.id) as UrlProjectId,
-          );
-        if (!projectPath) {
-          return;
-        }
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run resume",
-            event.session.id,
-            projectPath,
-            action.message,
-          );
-          return;
-        }
-        await this.supervisor.resumeSession(event.session.id, projectPath, {
-          text: action.message,
-        });
-        return;
-      }
-      case "set-global-instructions": {
-        const value = this.normalizeGlobalInstructions(action.text);
-        if (dryRun) {
-          console.log("[Automation] dry-run setGlobalInstructions", value);
-          return;
-        }
-        await this.serverSettingsService.updateSettings({
-          globalInstructions: value,
-        });
-        return;
-      }
-      case "append-global-instructions": {
-        const addition = this.normalizeGlobalInstructions(action.text);
-        const current = this.normalizeGlobalInstructions(
-          this.serverSettingsService.getSetting("globalInstructions"),
-        );
-        const value = addition
-          ? [current, addition]
-              .filter(Boolean)
-              .join(action.separator ?? "\n\n")
-              .trim()
-          : current;
-        if (dryRun) {
-          console.log("[Automation] dry-run appendGlobalInstructions", value);
-          return;
-        }
-        await this.serverSettingsService.updateSettings({
-          globalInstructions: value || undefined,
-        });
-        return;
-      }
-      case "clear-global-instructions": {
-        if (dryRun) {
-          console.log("[Automation] dry-run clearGlobalInstructions");
-          return;
-        }
-        await this.serverSettingsService.updateSettings({
-          globalInstructions: undefined,
-        });
-        return;
-      }
-      case "set-session-variable": {
-        this.ensureSessionMetadataService();
-        const key = action.key.trim();
-        if (!key) {
-          throw new Error("set-session-variable requires a key");
-        }
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run setSessionVariable",
-            event.session.id,
-            key,
-            action.value,
-          );
-          return;
-        }
-        await this.getSessionMetadataService().setSessionVariable(
-          event.session.id,
-          key,
-          action.value,
-        );
-        return;
-      }
-      case "set-session-variables": {
-        this.ensureSessionMetadataService();
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run setSessionVariables",
-            event.session.id,
-            action.variables,
-          );
-          return;
-        }
-        await this.getSessionMetadataService().setSessionVariables(
-          event.session.id,
-          action.variables,
-        );
-        return;
-      }
-      case "clear-session-variables": {
-        this.ensureSessionMetadataService();
-        if (dryRun) {
-          console.log(
-            "[Automation] dry-run clearSessionVariables",
-            event.session.id,
-          );
-          return;
-        }
-        await this.getSessionMetadataService().clearSessionVariables(
-          event.session.id,
-        );
-        return;
-      }
-    }
-  }
-
-  private assertInputEvent(
-    event: AutomationEvent,
-    action: string,
-  ): asserts event is AutomationInputEvent {
-    if (event.type !== "tool-approval" && event.type !== "user-question") {
-      throw new Error(`${action} is only valid for pending input events`);
     }
   }
 
@@ -540,54 +316,6 @@ export class AutomationService {
     };
   }
 
-  private async queueSessionMessage(
-    event: AutomationEvent,
-    text: string,
-    dryRun: boolean,
-  ): Promise<void> {
-    const projectPath = this.resolveProjectPath(
-      event.session.id,
-      event.project.id as UrlProjectId,
-    );
-    if (!projectPath) {
-      return;
-    }
-    if (dryRun) {
-      console.log("[Automation] dry-run queueMessage", event.session.id, text);
-      return;
-    }
-
-    await this.supervisor.queueMessageToSession(
-      event.session.id,
-      projectPath,
-      { text },
-      undefined,
-      undefined,
-      { source: "automation" },
-    );
-  }
-
-  private formatCommandMessage(
-    command: string,
-    args?: string | string[],
-  ): string {
-    const normalizedCommand = command.trim().replace(/^\/+/, "");
-    if (!normalizedCommand) {
-      throw new Error("send-command requires a command name");
-    }
-
-    const formattedArgs = Array.isArray(args)
-      ? args
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .join(" ")
-      : args?.trim();
-
-    return formattedArgs
-      ? `/${normalizedCommand} ${formattedArgs}`
-      : `/${normalizedCommand}`;
-  }
-
   private parseCommandText(
     text: string | undefined,
   ): { name: string; args: string[] } | null {
@@ -608,31 +336,6 @@ export class AutomationService {
     }
 
     return { name, args };
-  }
-
-  private normalizeGlobalInstructions(
-    text: string | undefined,
-  ): string | undefined {
-    const normalized = text?.trim();
-    return normalized ? normalized.slice(0, 10_000) : undefined;
-  }
-
-  private ensureSessionMetadataService(): void {
-    if (!this.sessionMetadataService) {
-      throw new Error(
-        "session metadata service is not available for session variable helpers",
-      );
-    }
-  }
-
-  private getSessionMetadataService(): SessionMetadataService {
-    const sessionMetadataService = this.sessionMetadataService;
-    if (!sessionMetadataService) {
-      throw new Error(
-        "session metadata service is not available for session variable helpers",
-      );
-    }
-    return sessionMetadataService;
   }
 
   private resolveProjectPath(

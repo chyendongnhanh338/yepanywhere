@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 const port = Number(process.env.PORT || 8787);
+const yepBaseUrl = process.env.YEP_BASE_URL || "http://127.0.0.1:3400";
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -9,6 +10,21 @@ function json(response, status, body) {
 
 function shouldRecover(event) {
   return event.type === "session-paused" && event.reason === "error";
+}
+
+async function callYep(path, init) {
+  const response = await fetch(new URL(path, yepBaseUrl), {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      "x-yep-anywhere": "true",
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Yep API failed: ${response.status}`);
+  }
 }
 
 const server = createServer(async (request, response) => {
@@ -37,29 +53,42 @@ const server = createServer(async (request, response) => {
   );
 
   if (event.type === "tool-approval") {
-    json(response, 200, {
-      actions: dryRun ? [] : [{ type: "approve" }],
-    });
+    if (!dryRun) {
+      await callYep(`/api/sessions/${event.session.id}/input`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestId: event.tool.request.id,
+          response: "approve",
+        }),
+      });
+    }
+    json(response, 204, null);
     return;
   }
 
   if (shouldRecover(event)) {
     const retries = Number(context?.sessionVariables?.retries ?? 0) + 1;
-    json(response, 200, {
-      actions: [
-        { type: "set-session-variable", key: "retries", value: retries },
+    if (!dryRun) {
+      await callYep(`/api/sessions/${event.session.id}/variables/retries`, {
+        method: "PUT",
+        body: JSON.stringify({ value: retries }),
+      });
+      await callYep(
+        `/api/projects/${event.project.id}/sessions/${event.session.id}/resume`,
         {
-          type: "resume",
-          message:
-            "The previous session stopped unexpectedly. Summarize the failure briefly, then continue from the last unfinished step.",
-          projectId: event.project.id,
+          method: "POST",
+          body: JSON.stringify({
+            message:
+              "The previous session stopped unexpectedly. Summarize the failure briefly, then continue from the last unfinished step.",
+          }),
         },
-      ],
-    });
+      );
+    }
+    json(response, 204, null);
     return;
   }
 
-  json(response, 200, { actions: [] });
+  json(response, 204, null);
 });
 
 server.listen(port, () => {

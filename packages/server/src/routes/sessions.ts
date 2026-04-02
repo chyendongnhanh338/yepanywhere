@@ -1493,6 +1493,102 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({ updated: true });
   });
 
+  // GET /api/sessions/:sessionId/variables - Get all session variables
+  routes.get("/sessions/:sessionId/variables", async (c) => {
+    const sessionId = c.req.param("sessionId");
+
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service not available" }, 503);
+    }
+
+    return c.json({
+      variables:
+        deps.sessionMetadataService.getSessionVariables(sessionId) ?? {},
+    });
+  });
+
+  // PUT /api/sessions/:sessionId/variables - Replace all session variables
+  routes.put("/sessions/:sessionId/variables", async (c) => {
+    const sessionId = c.req.param("sessionId");
+
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service not available" }, 503);
+    }
+
+    let body: { variables?: Record<string, unknown> } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (body.variables !== undefined && typeof body.variables !== "object") {
+      return c.json({ error: "variables must be an object" }, 400);
+    }
+
+    await deps.sessionMetadataService.setSessionVariables(
+      sessionId,
+      body.variables,
+    );
+
+    return c.json({ updated: true });
+  });
+
+  // PUT /api/sessions/:sessionId/variables/:key - Set a single session variable
+  routes.put("/sessions/:sessionId/variables/:key", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const key = c.req.param("key");
+
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service not available" }, 503);
+    }
+
+    let body: { value?: unknown } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    await deps.sessionMetadataService.setSessionVariable(
+      sessionId,
+      key,
+      body.value,
+    );
+
+    return c.json({ updated: true });
+  });
+
+  // DELETE /api/sessions/:sessionId/variables - Clear all session variables
+  routes.delete("/sessions/:sessionId/variables", async (c) => {
+    const sessionId = c.req.param("sessionId");
+
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service not available" }, 503);
+    }
+
+    await deps.sessionMetadataService.clearSessionVariables(sessionId);
+    return c.json({ updated: true });
+  });
+
+  // DELETE /api/sessions/:sessionId/variables/:key - Clear a single session variable
+  routes.delete("/sessions/:sessionId/variables/:key", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const key = c.req.param("key");
+
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service not available" }, 503);
+    }
+
+    await deps.sessionMetadataService.setSessionVariable(
+      sessionId,
+      key,
+      undefined,
+    );
+
+    return c.json({ updated: true });
+  });
+
   // POST /api/projects/:projectId/sessions/:sessionId/clone - Clone a session
   routes.post("/projects/:projectId/sessions/:sessionId/clone", async (c) => {
     const projectId = c.req.param("projectId");
