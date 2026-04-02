@@ -160,6 +160,15 @@ export class Supervisor {
       timestamp?: string;
     },
   ) => void;
+  private suppressedPausedSessionEvents = new Set<string>();
+  private lastPausedReasonByProcess = new Map<
+    string,
+    SessionPausedEvent["reason"]
+  >();
+  private lastEmittedActivityByProcess = new Map<
+    string,
+    { activity: AgentActivity; pendingInputType?: PendingInputType }
+  >();
   private staleCheckTimer: ReturnType<typeof setInterval>;
 
   constructor(options: SupervisorOptions) {
@@ -854,6 +863,7 @@ export class Supervisor {
           if (!existingProcess.isTerminated) {
             const result = existingProcess.queueMessage(message);
             if (result.success) {
+              this.resetPausedState(existingProcess.id);
               return existingProcess;
             }
             // Failed to queue - process likely terminated, clean up and start fresh
@@ -973,6 +983,7 @@ export class Supervisor {
     message: UserMessage,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    options?: { source?: "user" | "automation" },
   ): Promise<
     | { success: true; process: Process; restarted: boolean }
     | { success: false; error: string }
@@ -1034,6 +1045,7 @@ export class Supervisor {
           "Thinking/effort changed on queue, restarting process",
         );
 
+        this.suppressedPausedSessionEvents.add(process.id);
         await process.abort();
         this.unregisterProcess(process);
 
@@ -1046,7 +1058,7 @@ export class Supervisor {
         );
 
         if ("id" in result) {
-          this.emitMessageQueued(result, message);
+          this.emitMessageQueued(result, message, options?.source);
           return { success: true, process: result, restarted: true };
         }
         return { success: false, error: "Request was queued or failed" };
@@ -1060,7 +1072,8 @@ export class Supervisor {
 
     const result = process.queueMessage(message);
     if (result.success) {
-      this.emitMessageQueued(process, message);
+      this.resetPausedState(process.id);
+      this.emitMessageQueued(process, message, options?.source);
       return { success: true, process, restarted: false };
     }
 
@@ -1104,6 +1117,7 @@ export class Supervisor {
     // can set up the grace period before any file changes arrive
     this.emitSessionAborted(process.sessionId, process.projectId);
 
+    this.suppressedPausedSessionEvents.add(process.id);
     await process.abort();
     this.unregisterProcess(process);
     return true;
@@ -1154,7 +1168,11 @@ export class Supervisor {
     this.eventBus.emit(event);
   }
 
-  private emitMessageQueued(process: Process, message: UserMessage): void {
+  private emitMessageQueued(
+    process: Process,
+    message: UserMessage,
+    source?: "user" | "automation",
+  ): void {
     if (!this.eventBus) return;
 
     const event: MessageQueuedEvent = {
@@ -1164,9 +1182,15 @@ export class Supervisor {
       processId: process.id,
       provider: process.provider,
       text: message.text,
+      source: source ?? "user",
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
+  }
+
+  private resetPausedState(processId: string): void {
+    this.lastPausedReasonByProcess.delete(processId);
+    this.suppressedPausedSessionEvents.delete(processId);
   }
 
   private registerProcess(process: Process, isNewSession: boolean): void {
@@ -1311,13 +1335,31 @@ export class Supervisor {
                 ? "tool-approval"
                 : "user-question";
           }
-          this.emitAgentActivityChange(
-            process.sessionId,
-            process.projectId,
-            event.state.type,
-            pendingInputType,
+          const previousActivity = this.lastEmittedActivityByProcess.get(
+            process.id,
           );
-          if (event.state.type === "idle") {
+          const isDuplicateActivity =
+            previousActivity?.activity === event.state.type &&
+            previousActivity?.pendingInputType === pendingInputType;
+
+          if (!isDuplicateActivity) {
+            this.emitAgentActivityChange(
+              process.sessionId,
+              process.projectId,
+              event.state.type,
+              pendingInputType,
+            );
+            this.lastEmittedActivityByProcess.set(process.id, {
+              activity: event.state.type,
+              pendingInputType,
+            });
+          }
+
+          if (
+            event.state.type === "idle" &&
+            !isDuplicateActivity &&
+            !this.suppressedPausedSessionEvents.has(process.id)
+          ) {
             this.emitSessionPaused({
               sessionId: process.sessionId,
               projectId: process.projectId,
@@ -1330,7 +1372,10 @@ export class Supervisor {
         }
         // Emit worker activity on any state change (affects hasActiveWork)
         this.emitWorkerActivity();
-      } else if (event.type === "terminated") {
+      } else if (
+        event.type === "terminated" &&
+        !this.suppressedPausedSessionEvents.has(process.id)
+      ) {
         this.emitSessionPaused({
           sessionId: process.sessionId,
           projectId: process.projectId,
@@ -1345,6 +1390,11 @@ export class Supervisor {
   }
 
   private unregisterProcess(process: Process): void {
+    if (!this.processes.has(process.id)) {
+      this.suppressedPausedSessionEvents.delete(process.id);
+      return;
+    }
+
     const log = getLogger();
     const durationMs = Date.now() - process.startedAt.getTime();
     log.info(
@@ -1384,16 +1434,9 @@ export class Supervisor {
       owner: "none",
     });
 
-    if (!process.terminationReason) {
-      this.emitSessionPaused({
-        sessionId: process.sessionId,
-        projectId: process.projectId,
-        processId: process.id,
-        provider: process.provider,
-        reason: "completed",
-        lastMessageText: this.extractLastMessageText(process),
-      });
-    }
+    this.lastEmittedActivityByProcess.delete(process.id);
+    this.lastPausedReasonByProcess.delete(process.id);
+    this.suppressedPausedSessionEvents.delete(process.id);
 
     // Emit agent activity change to notify clients that this session is no longer running
     // This is needed for real-time updates (e.g., AgentsNavItem indicator)
@@ -1568,6 +1611,18 @@ export class Supervisor {
       timestamp?: string;
     },
   ): void {
+    if (event.processId) {
+      if (this.suppressedPausedSessionEvents.has(event.processId)) {
+        return;
+      }
+      if (
+        this.lastPausedReasonByProcess.get(event.processId) === event.reason
+      ) {
+        return;
+      }
+      this.lastPausedReasonByProcess.set(event.processId, event.reason);
+    }
+
     this.onSessionPaused?.(event);
   }
 

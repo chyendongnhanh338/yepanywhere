@@ -1047,8 +1047,10 @@ export interface ServerSettings {
   automationEventTypes?: Array<
     "tool-approval" | "user-question" | "session-paused" | "message-queued"
   >;
-  /** JavaScript source for the automation callback handler */
-  automationScript?: string;
+  /** External webhook URL that receives automation events */
+  automationWebhookUrl?: string;
+  /** Optional bearer token used when calling the external automation webhook */
+  automationWebhookToken?: string;
   /** When true, automation logs only and skips mutating actions */
   automationDryRun?: boolean;
 }

@@ -151,8 +151,8 @@ describe("Settings Routes", () => {
             "message-queued",
             "bogus",
           ],
-          automationScript:
-            "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
+          automationWebhookUrl: "https://example.test/yep-anywhere",
+          automationWebhookToken: "secret-token",
         }),
       });
 
@@ -165,7 +165,10 @@ describe("Settings Routes", () => {
         "session-paused",
         "message-queued",
       ]);
-      expect(json.settings.automationScript).toContain("onEvent");
+      expect(json.settings.automationWebhookUrl).toBe(
+        "https://example.test/yep-anywhere",
+      );
+      expect(json.settings.automationWebhookToken).toBe("secret-token");
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         automationEnabled: true,
         automationDryRun: false,
@@ -174,8 +177,8 @@ describe("Settings Routes", () => {
           "session-paused",
           "message-queued",
         ],
-        automationScript:
-          "async function onEvent(ctx) { ctx.log(ctx.event.type); }",
+        automationWebhookUrl: "https://example.test/yep-anywhere",
+        automationWebhookToken: "secret-token",
       });
     });
   });

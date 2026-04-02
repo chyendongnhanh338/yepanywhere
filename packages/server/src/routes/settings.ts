@@ -259,15 +259,30 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       updates.automationDryRun = body.automationDryRun;
     }
 
-    if ("automationScript" in body) {
+    if ("automationWebhookUrl" in body) {
       if (
-        body.automationScript === undefined ||
-        body.automationScript === null ||
-        body.automationScript === ""
+        body.automationWebhookUrl === undefined ||
+        body.automationWebhookUrl === null ||
+        body.automationWebhookUrl === ""
       ) {
-        updates.automationScript = undefined;
-      } else if (typeof body.automationScript === "string") {
-        updates.automationScript = body.automationScript.slice(0, 50_000);
+        updates.automationWebhookUrl = undefined;
+      } else if (typeof body.automationWebhookUrl === "string") {
+        updates.automationWebhookUrl = body.automationWebhookUrl.slice(0, 2000);
+      }
+    }
+
+    if ("automationWebhookToken" in body) {
+      if (
+        body.automationWebhookToken === undefined ||
+        body.automationWebhookToken === null ||
+        body.automationWebhookToken === ""
+      ) {
+        updates.automationWebhookToken = undefined;
+      } else if (typeof body.automationWebhookToken === "string") {
+        updates.automationWebhookToken = body.automationWebhookToken.slice(
+          0,
+          5000,
+        );
       }
     }
 

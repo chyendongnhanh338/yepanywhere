@@ -1,5 +1,4 @@
 import { basename } from "node:path";
-import vm from "node:vm";
 import type { InputRequest, UrlProjectId } from "@yep-anywhere/shared";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
@@ -75,64 +74,36 @@ type AutomationEvent =
   | AutomationSessionPausedEvent
   | AutomationMessageQueuedEvent;
 
-interface AutomationActions {
-  approve: () => Promise<{ ok: boolean; dryRun: boolean }>;
-  deny: (feedback?: string) => Promise<{ ok: boolean; dryRun: boolean }>;
-  answer: (
-    answers: Record<string, string>,
-    feedback?: string,
-  ) => Promise<{ ok: boolean; dryRun: boolean }>;
-  sendMessage: (text: string) => Promise<{ ok: boolean; dryRun: boolean }>;
-  sendCommand: (
-    command: string,
-    args?: string | string[],
-  ) => Promise<{ ok: boolean; dryRun: boolean }>;
-  resume: (
-    message: string,
-    options?: { projectPath?: string; projectId?: string },
-  ) => Promise<{ ok: boolean; dryRun: boolean }>;
-}
+type AutomationAction =
+  | { type: "approve" }
+  | { type: "deny"; feedback?: string }
+  | { type: "answer"; answers: Record<string, string>; feedback?: string }
+  | { type: "send-message"; text: string }
+  | { type: "send-command"; command: string; args?: string | string[] }
+  | {
+      type: "resume";
+      message: string;
+      projectPath?: string;
+      projectId?: string;
+    }
+  | { type: "set-global-instructions"; text?: string }
+  | { type: "append-global-instructions"; text: string; separator?: string }
+  | { type: "clear-global-instructions" }
+  | { type: "set-session-variable"; key: string; value: unknown }
+  | { type: "set-session-variables"; variables: Record<string, unknown> }
+  | { type: "clear-session-variables" };
 
-interface AutomationContextApi {
-  getGlobalInstructions: () => string | undefined;
-  setGlobalInstructions: (
-    text?: string,
-  ) => Promise<{ ok: boolean; dryRun: boolean; value?: string }>;
-  appendGlobalInstructions: (
-    text: string,
-    options?: { separator?: string },
-  ) => Promise<{ ok: boolean; dryRun: boolean; value?: string }>;
-  clearGlobalInstructions: () => Promise<{ ok: boolean; dryRun: boolean }>;
-  getSessionVariables: () => Record<string, unknown>;
-  getSessionVariable: (key: string) => unknown;
-  setSessionVariable: (
-    key: string,
-    value: unknown,
-  ) => Promise<{ ok: boolean; dryRun: boolean; value?: unknown }>;
-  setSessionVariables: (variables: Record<string, unknown>) => Promise<{
-    ok: boolean;
-    dryRun: boolean;
-    value?: Record<string, unknown>;
-  }>;
-  clearSessionVariables: () => Promise<{ ok: boolean; dryRun: boolean }>;
-}
-
-interface AutomationContext {
+interface AutomationWebhookRequest {
   event: AutomationEvent;
-  log: (...args: unknown[]) => void;
-  http: {
-    fetch: typeof fetch;
-    request<T = unknown>(
-      input: string | URL | Request,
-      init?: RequestInit & { json?: unknown; raw?: false },
-    ): Promise<T>;
-    request(
-      input: string | URL | Request,
-      init: RequestInit & { json?: unknown; raw: true },
-    ): Promise<Response>;
+  dryRun: boolean;
+  context: {
+    globalInstructions?: string;
+    sessionVariables: Record<string, unknown>;
   };
-  actions: AutomationActions;
-  context: AutomationContextApi;
+}
+
+interface AutomationWebhookResponse {
+  actions?: AutomationAction[];
 }
 
 interface AutomationServiceOptions {
@@ -141,8 +112,6 @@ interface AutomationServiceOptions {
   serverSettingsService: ServerSettingsService;
   sessionMetadataService?: SessionMetadataService;
 }
-
-const SCRIPT_TIMEOUT_MS = 5000;
 
 export class AutomationService {
   private readonly eventBus: EventBus;
@@ -181,7 +150,7 @@ export class AutomationService {
   private async handleBusEvent(event: BusEvent): Promise<void> {
     const normalized = this.normalizeEvent(event);
     if (!normalized) return;
-    await this.executeCallback(normalized);
+    await this.executeWebhook(normalized);
   }
 
   private normalizeEvent(event: BusEvent): AutomationEvent | null {
@@ -222,6 +191,9 @@ export class AutomationService {
     }
 
     if (event.type === "message-queued") {
+      if (event.source === "automation") {
+        return null;
+      }
       return this.buildMessageQueuedEvent(event);
     }
 
@@ -270,7 +242,7 @@ export class AutomationService {
     };
   }
 
-  private async executeCallback(event: AutomationEvent): Promise<void> {
+  private async executeWebhook(event: AutomationEvent): Promise<void> {
     const settings = this.serverSettingsService.getSettings();
     if (!settings.automationEnabled) {
       return;
@@ -284,323 +256,248 @@ export class AutomationService {
       return;
     }
 
-    const source = this.normalizeScriptSource(
-      settings.automationScript?.trim(),
-    );
-    if (!source) {
+    const webhookUrl = settings.automationWebhookUrl?.trim();
+    if (!webhookUrl) {
       return;
     }
 
     const dryRun = settings.automationDryRun ?? true;
+    const requestBody: AutomationWebhookRequest = {
+      event,
+      dryRun,
+      context: {
+        globalInstructions:
+          this.serverSettingsService.getSetting("globalInstructions") ??
+          undefined,
+        sessionVariables:
+          this.sessionMetadataService?.getSessionVariables(event.session.id) ??
+          {},
+      },
+    };
+
+    const headers = new Headers({
+      "content-type": "application/json",
+    });
+    const token = settings.automationWebhookToken?.trim();
+    if (token) {
+      headers.set("authorization", `Bearer ${token}`);
+    }
 
     try {
-      const script = new vm.Script(
-        `"use strict"; (async () => { ${source}\n; const __handler = typeof onEvent === "function" ? onEvent : (globalThis.default && typeof globalThis.default === "function" ? globalThis.default : null); if (!__handler) { throw new Error("automation script must define onEvent(ctx) or default(ctx)"); } return __handler; })()`,
-        { filename: "automation-callback.js" },
-      );
-
-      const context = vm.createContext({
-        console: this.buildConsole(),
-        fetch,
-        setTimeout,
-        clearTimeout,
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
       });
 
-      const handler = (await script.runInContext(context, {
-        timeout: SCRIPT_TIMEOUT_MS,
-      })) as (ctx: AutomationContext) => Promise<unknown> | unknown;
-
-      await Promise.resolve(
-        handler({
-          event,
-          log: (...args: unknown[]) => {
-            console.log("[Automation]", ...args);
-          },
-          http: {
-            fetch,
-            request: this.request.bind(this),
-          },
-          actions: this.createActions(event, dryRun),
-          context: this.createContextApi(event, dryRun),
-        }),
-      );
-    } catch (error) {
-      console.error("[Automation] Callback execution failed:", error);
-    }
-  }
-
-  private normalizeScriptSource(
-    source: string | undefined,
-  ): string | undefined {
-    if (!source) return source;
-    if (source.startsWith("export default")) {
-      return source.replace(/^export default\s+/, "globalThis.default = ");
-    }
-    return source;
-  }
-
-  private buildConsole(): Pick<Console, "log" | "warn" | "error"> {
-    return {
-      log: (...args: unknown[]) => console.log("[Automation]", ...args),
-      warn: (...args: unknown[]) => console.warn("[Automation]", ...args),
-      error: (...args: unknown[]) => console.error("[Automation]", ...args),
-    };
-  }
-
-  private request<T = unknown>(
-    input: string | URL | Request,
-    init?: RequestInit & { json?: unknown; raw?: false },
-  ): Promise<T>;
-  private request(
-    input: string | URL | Request,
-    init: RequestInit & { json?: unknown; raw: true },
-  ): Promise<Response>;
-  private async request<T = unknown>(
-    input: string | URL | Request,
-    init?: RequestInit & { json?: unknown; raw?: boolean },
-  ): Promise<T | Response> {
-    const { json, raw, headers, ...rest } = init ?? {};
-    const requestHeaders = new Headers(headers);
-
-    let body = rest.body;
-    if (json !== undefined) {
-      body = JSON.stringify(json);
-      if (!requestHeaders.has("content-type")) {
-        requestHeaders.set("content-type", "application/json");
+      if (!response.ok) {
+        console.error("[Automation] Webhook failed:", response.status);
+        return;
       }
+
+      const body = (await response.json()) as AutomationWebhookResponse;
+      const actions = Array.isArray(body.actions) ? body.actions : [];
+      for (const action of actions) {
+        await this.executeAction(event, action, dryRun);
+      }
+    } catch (error) {
+      console.error("[Automation] Webhook execution failed:", error);
     }
-
-    const response = await fetch(input, {
-      ...rest,
-      headers: requestHeaders,
-      body,
-    });
-
-    if (raw) {
-      return response;
-    }
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      return (await response.json()) as T;
-    }
-
-    return (await response.text()) as T;
   }
 
-  private createActions(
+  private async executeAction(
     event: AutomationEvent,
+    action: AutomationAction,
     dryRun: boolean,
-  ): AutomationActions {
-    return {
-      approve: async () => {
-        if (event.type !== "tool-approval" && event.type !== "user-question") {
-          throw new Error("approve() is only valid for pending input events");
-        }
+  ): Promise<void> {
+    switch (action.type) {
+      case "approve": {
+        this.assertInputEvent(event, "approve");
         if (dryRun) {
           console.log("[Automation] dry-run approve", event.session.id);
-          return { ok: true, dryRun: true };
+          return;
         }
         const process = this.supervisor.getProcessForSession(event.session.id);
-        const ok =
-          !!process &&
-          process.respondToInput(event.tool.request.id, "approve", undefined);
-        return { ok, dryRun: false };
-      },
-      deny: async (feedback?: string) => {
-        if (event.type !== "tool-approval" && event.type !== "user-question") {
-          throw new Error("deny() is only valid for pending input events");
-        }
+        process?.respondToInput(event.tool.request.id, "approve", undefined);
+        return;
+      }
+      case "deny": {
+        this.assertInputEvent(event, "deny");
         if (dryRun) {
-          console.log("[Automation] dry-run deny", event.session.id, feedback);
-          return { ok: true, dryRun: true };
+          console.log(
+            "[Automation] dry-run deny",
+            event.session.id,
+            action.feedback,
+          );
+          return;
         }
         const process = this.supervisor.getProcessForSession(event.session.id);
-        const ok =
-          !!process &&
-          process.respondToInput(
-            event.tool.request.id,
-            "deny",
-            undefined,
-            feedback,
-          );
-        return { ok, dryRun: false };
-      },
-      answer: async (answers: Record<string, string>, feedback?: string) => {
-        if (event.type !== "tool-approval" && event.type !== "user-question") {
-          throw new Error("answer() is only valid for pending input events");
-        }
+        process?.respondToInput(
+          event.tool.request.id,
+          "deny",
+          undefined,
+          action.feedback,
+        );
+        return;
+      }
+      case "answer": {
+        this.assertInputEvent(event, "answer");
         if (dryRun) {
-          console.log("[Automation] dry-run answer", event.session.id, answers);
-          return { ok: true, dryRun: true };
+          console.log(
+            "[Automation] dry-run answer",
+            event.session.id,
+            action.answers,
+          );
+          return;
         }
         const process = this.supervisor.getProcessForSession(event.session.id);
-        const ok =
-          !!process &&
-          process.respondToInput(
-            event.tool.request.id,
-            "approve",
-            answers,
-            feedback,
-          );
-        return { ok, dryRun: false };
-      },
-      sendMessage: async (text: string) => {
-        return this.queueSessionMessage(event, text, dryRun, "sendMessage");
-      },
-      sendCommand: async (command: string, args?: string | string[]) => {
-        const text = this.formatCommandMessage(command, args);
-        return this.queueSessionMessage(event, text, dryRun, "sendCommand");
-      },
-      resume: async (
-        message: string,
-        options?: { projectPath?: string; projectId?: string },
-      ) => {
+        process?.respondToInput(
+          event.tool.request.id,
+          "approve",
+          action.answers,
+          action.feedback,
+        );
+        return;
+      }
+      case "send-message": {
+        await this.queueSessionMessage(event, action.text, dryRun);
+        return;
+      }
+      case "send-command": {
+        await this.queueSessionMessage(
+          event,
+          this.formatCommandMessage(action.command, action.args),
+          dryRun,
+        );
+        return;
+      }
+      case "resume": {
         const projectPath =
-          options?.projectPath ??
+          action.projectPath ??
           this.resolveProjectPath(
             event.session.id,
-            options?.projectId ?? (event.project.id as UrlProjectId),
+            (action.projectId ?? event.project.id) as UrlProjectId,
           );
         if (!projectPath) {
-          return { ok: false, dryRun };
+          return;
         }
         if (dryRun) {
           console.log(
             "[Automation] dry-run resume",
             event.session.id,
             projectPath,
-            message,
+            action.message,
           );
-          return { ok: true, dryRun: true };
+          return;
         }
         await this.supervisor.resumeSession(event.session.id, projectPath, {
-          text: message,
+          text: action.message,
         });
-        return { ok: true, dryRun: false };
-      },
-    };
-  }
-
-  private createContextApi(
-    event: AutomationEvent,
-    dryRun: boolean,
-  ): AutomationContextApi {
-    return {
-      getGlobalInstructions: () => {
-        return this.serverSettingsService.getSetting("globalInstructions");
-      },
-      setGlobalInstructions: async (text?: string) => {
-        const value = this.normalizeGlobalInstructions(text);
+        return;
+      }
+      case "set-global-instructions": {
+        const value = this.normalizeGlobalInstructions(action.text);
         if (dryRun) {
           console.log("[Automation] dry-run setGlobalInstructions", value);
-          return { ok: true, dryRun: true, value };
+          return;
         }
         await this.serverSettingsService.updateSettings({
           globalInstructions: value,
         });
-        return { ok: true, dryRun: false, value };
-      },
-      appendGlobalInstructions: async (
-        text: string,
-        options?: { separator?: string },
-      ) => {
-        const addition = this.normalizeGlobalInstructions(text);
+        return;
+      }
+      case "append-global-instructions": {
+        const addition = this.normalizeGlobalInstructions(action.text);
         const current = this.normalizeGlobalInstructions(
           this.serverSettingsService.getSetting("globalInstructions"),
         );
         const value = addition
           ? [current, addition]
               .filter(Boolean)
-              .join(options?.separator ?? "\n\n")
+              .join(action.separator ?? "\n\n")
               .trim()
           : current;
-
         if (dryRun) {
           console.log("[Automation] dry-run appendGlobalInstructions", value);
-          return { ok: true, dryRun: true, value };
+          return;
         }
         await this.serverSettingsService.updateSettings({
           globalInstructions: value || undefined,
         });
-        return { ok: true, dryRun: false, value: value || undefined };
-      },
-      clearGlobalInstructions: async () => {
+        return;
+      }
+      case "clear-global-instructions": {
         if (dryRun) {
           console.log("[Automation] dry-run clearGlobalInstructions");
-          return { ok: true, dryRun: true };
+          return;
         }
         await this.serverSettingsService.updateSettings({
           globalInstructions: undefined,
         });
-        return { ok: true, dryRun: false };
-      },
-      getSessionVariables: () => {
-        return (
-          this.sessionMetadataService?.getSessionVariables(event.session.id) ??
-          {}
-        );
-      },
-      getSessionVariable: (key: string) => {
-        return this.sessionMetadataService?.getSessionVariable(
-          event.session.id,
-          key,
-        );
-      },
-      setSessionVariable: async (key: string, value: unknown) => {
-        const normalizedKey = key.trim();
-        if (!normalizedKey) {
-          throw new Error("setSessionVariable() requires a key");
+        return;
+      }
+      case "set-session-variable": {
+        this.ensureSessionMetadataService();
+        const key = action.key.trim();
+        if (!key) {
+          throw new Error("set-session-variable requires a key");
         }
         if (dryRun) {
           console.log(
             "[Automation] dry-run setSessionVariable",
             event.session.id,
-            normalizedKey,
-            value,
+            key,
+            action.value,
           );
-          return { ok: true, dryRun: true, value };
+          return;
         }
-        this.ensureSessionMetadataService();
-        const sessionMetadataService = this.getSessionMetadataService();
-        await sessionMetadataService.setSessionVariable(
+        await this.getSessionMetadataService().setSessionVariable(
           event.session.id,
-          normalizedKey,
-          value,
+          key,
+          action.value,
         );
-        return { ok: true, dryRun: false, value };
-      },
-      setSessionVariables: async (variables: Record<string, unknown>) => {
+        return;
+      }
+      case "set-session-variables": {
+        this.ensureSessionMetadataService();
         if (dryRun) {
           console.log(
             "[Automation] dry-run setSessionVariables",
             event.session.id,
-            variables,
+            action.variables,
           );
-          return { ok: true, dryRun: true, value: variables };
+          return;
         }
-        this.ensureSessionMetadataService();
-        const sessionMetadataService = this.getSessionMetadataService();
-        await sessionMetadataService.setSessionVariables(
+        await this.getSessionMetadataService().setSessionVariables(
           event.session.id,
-          variables,
+          action.variables,
         );
-        return { ok: true, dryRun: false, value: variables };
-      },
-      clearSessionVariables: async () => {
+        return;
+      }
+      case "clear-session-variables": {
+        this.ensureSessionMetadataService();
         if (dryRun) {
           console.log(
             "[Automation] dry-run clearSessionVariables",
             event.session.id,
           );
-          return { ok: true, dryRun: true };
+          return;
         }
-        this.ensureSessionMetadataService();
-        const sessionMetadataService = this.getSessionMetadataService();
-        await sessionMetadataService.clearSessionVariables(event.session.id);
-        return { ok: true, dryRun: false };
-      },
-    };
+        await this.getSessionMetadataService().clearSessionVariables(
+          event.session.id,
+        );
+        return;
+      }
+    }
+  }
+
+  private assertInputEvent(
+    event: AutomationEvent,
+    action: string,
+  ): asserts event is AutomationInputEvent {
+    if (event.type !== "tool-approval" && event.type !== "user-question") {
+      throw new Error(`${action} is only valid for pending input events`);
+    }
   }
 
   private buildMessageQueuedEvent(
@@ -647,26 +544,27 @@ export class AutomationService {
     event: AutomationEvent,
     text: string,
     dryRun: boolean,
-    action: "sendMessage" | "sendCommand",
-  ): Promise<{ ok: boolean; dryRun: boolean }> {
+  ): Promise<void> {
     const projectPath = this.resolveProjectPath(
       event.session.id,
       event.project.id as UrlProjectId,
     );
     if (!projectPath) {
-      return { ok: false, dryRun };
+      return;
     }
     if (dryRun) {
-      console.log(`[Automation] dry-run ${action}`, event.session.id, text);
-      return { ok: true, dryRun: true };
+      console.log("[Automation] dry-run queueMessage", event.session.id, text);
+      return;
     }
 
-    const result = await this.supervisor.queueMessageToSession(
+    await this.supervisor.queueMessageToSession(
       event.session.id,
       projectPath,
       { text },
+      undefined,
+      undefined,
+      { source: "automation" },
     );
-    return { ok: result.success, dryRun: false };
   }
 
   private formatCommandMessage(
@@ -675,7 +573,7 @@ export class AutomationService {
   ): string {
     const normalizedCommand = command.trim().replace(/^\/+/, "");
     if (!normalizedCommand) {
-      throw new Error("sendCommand() requires a command name");
+      throw new Error("send-command requires a command name");
     }
 
     const formattedArgs = Array.isArray(args)

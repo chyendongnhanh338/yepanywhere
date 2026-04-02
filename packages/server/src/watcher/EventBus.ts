@@ -119,6 +119,7 @@ export interface MessageQueuedEvent {
     | "opencode";
   timestamp: string;
   text?: string;
+  source?: "user" | "automation";
 }
 
 /** Event emitted when a request is added to the worker queue */

@@ -17,14 +17,9 @@ import type {
   BusEvent,
   EventBus,
   ProcessStateEvent,
-  SessionPausedEvent,
 } from "../watcher/EventBus.js";
 import type { PushService } from "./PushService.js";
-import type {
-  DismissPayload,
-  PendingInputPayload,
-  SessionHaltedPayload,
-} from "./types.js";
+import type { DismissPayload, PendingInputPayload } from "./types.js";
 
 export interface PushNotifierOptions {
   eventBus: EventBus;
@@ -53,8 +48,6 @@ export class PushNotifier {
     this.unsubscribe = this.eventBus.subscribe((event: BusEvent) => {
       if (event.type === "process-state-changed") {
         void this.handleProcessStateChange(event);
-      } else if (event.type === "session-paused") {
-        void this.handleSessionPaused(event);
       }
     });
   }
@@ -160,35 +153,6 @@ export class PushNotifier {
     }
   }
 
-  private async handleSessionPaused(event: SessionPausedEvent): Promise<void> {
-    if (!this.pushService.isNotificationTypeEnabled("sessionHalted")) {
-      return;
-    }
-
-    if (this.pushService.getSubscriptionCount() === 0) {
-      return;
-    }
-
-    const payload: SessionHaltedPayload = {
-      type: "session-halted",
-      sessionId: event.sessionId,
-      projectId: event.projectId,
-      projectName: this.getProjectName(event.projectId),
-      reason: event.reason,
-      duration: 0,
-      timestamp: event.timestamp,
-    };
-
-    try {
-      const connectedIds =
-        this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-      await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
-    } catch (error) {
-      console.error("[PushNotifier] Failed to send session-halted:", error);
-    }
-  }
   /**
    * Get project name from projectId.
    */

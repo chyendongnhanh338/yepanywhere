@@ -26,8 +26,10 @@ export function AutomationSettings() {
     error,
     isLoading,
     updateSetting: updateServerSetting,
+    updateSettings: updateServerSettings,
   } = useServerSettings();
-  const [automationScript, setAutomationScript] = useState("");
+  const [automationWebhookUrl, setAutomationWebhookUrl] = useState("");
+  const [automationWebhookToken, setAutomationWebhookToken] = useState("");
   const [automationDirty, setAutomationDirty] = useState(false);
   const [automationSaving, setAutomationSaving] = useState(false);
   const [automationSaveError, setAutomationSaveError] = useState<string | null>(
@@ -35,15 +37,22 @@ export function AutomationSettings() {
   );
 
   useEffect(() => {
-    setAutomationScript(serverSettings?.automationScript ?? "");
+    setAutomationWebhookUrl(serverSettings?.automationWebhookUrl ?? "");
+    setAutomationWebhookToken(serverSettings?.automationWebhookToken ?? "");
     setAutomationDirty(false);
-  }, [serverSettings?.automationScript]);
+  }, [
+    serverSettings?.automationWebhookToken,
+    serverSettings?.automationWebhookUrl,
+  ]);
 
-  const handleSaveAutomationScript = async () => {
+  const handleSaveAutomationConfig = async () => {
     setAutomationSaving(true);
     setAutomationSaveError(null);
     try {
-      await updateServerSetting("automationScript", automationScript);
+      await updateServerSettings({
+        automationWebhookUrl: automationWebhookUrl.trim() || undefined,
+        automationWebhookToken: automationWebhookToken.trim() || undefined,
+      });
       setAutomationDirty(false);
     } catch (saveError) {
       setAutomationSaveError(
@@ -69,8 +78,8 @@ export function AutomationSettings() {
     <section className="settings-section">
       <h2>Automation</h2>
       <p className="settings-section-description">
-        Configure server-side JavaScript callbacks that run when approvals,
-        questions, paused sessions, or queued messages occur.
+        Send session events to an external automation webhook and let that
+        service decide which follow-up actions to run.
       </p>
 
       <div className="settings-group">
@@ -78,8 +87,8 @@ export function AutomationSettings() {
           <div className="settings-item-info">
             <strong>Enable Automation</strong>
             <p>
-              Run the configured callback whenever one of the selected event
-              types occurs.
+              Call the configured automation webhook whenever one of the
+              selected event types occurs.
             </p>
           </div>
           <label className="toggle-switch">
@@ -120,7 +129,7 @@ export function AutomationSettings() {
           <div className="settings-item-info">
             <strong>Trigger Events</strong>
             <p>
-              Choose which session events should invoke the automation hook.
+              Choose which session events should invoke the automation webhook.
             </p>
           </div>
           <div
@@ -158,26 +167,44 @@ export function AutomationSettings() {
           style={{ flexDirection: "column", alignItems: "stretch" }}
         >
           <div className="settings-item-info">
-            <strong>Automation Script</strong>
+            <strong>Automation Webhook</strong>
             <p>
-              Define `onEvent(ctx)` to inspect the event, call helpers, and
-              automate replies.
+              Configure the external service endpoint that receives automation
+              events and returns actions for the server to execute.
             </p>
           </div>
-          <textarea
-            className="settings-textarea"
-            rows={12}
-            value={automationScript}
+          <input
+            type="url"
+            className="settings-input"
+            value={automationWebhookUrl}
             onChange={(e) => {
-              setAutomationScript(e.target.value);
+              setAutomationWebhookUrl(e.target.value);
               setAutomationDirty(
-                e.target.value !== (serverSettings?.automationScript ?? ""),
+                e.target.value !==
+                  (serverSettings?.automationWebhookUrl ?? "") ||
+                  automationWebhookToken !==
+                    (serverSettings?.automationWebhookToken ?? ""),
               );
               setAutomationSaveError(null);
             }}
-            placeholder={
-              "async function onEvent(ctx) {\n  ctx.log(ctx.event.type);\n  // await ctx.actions.sendCommand('model', 'sonnet');\n}"
-            }
+            placeholder="https://automation.example.com/yep-anywhere"
+          />
+          <input
+            type="password"
+            className="settings-input"
+            value={automationWebhookToken}
+            onChange={(e) => {
+              setAutomationWebhookToken(e.target.value);
+              setAutomationDirty(
+                automationWebhookUrl !==
+                  (serverSettings?.automationWebhookUrl ?? "") ||
+                  e.target.value !==
+                    (serverSettings?.automationWebhookToken ?? ""),
+              );
+              setAutomationSaveError(null);
+            }}
+            placeholder="Bearer token (optional)"
+            style={{ marginTop: "var(--space-2)" }}
           />
           <div
             style={{
@@ -188,14 +215,14 @@ export function AutomationSettings() {
             }}
           >
             <span className="settings-hint">
-              Helpers include `ctx.log(...)`, `ctx.http.request(...)`, and
-              `ctx.actions.*`, `ctx.context.*`.
+              The server sends the event payload plus current instructions and
+              session variables. Your webhook responds with an `actions` array.
             </span>
             <button
               type="button"
               className="settings-button"
               disabled={!automationDirty || automationSaving}
-              onClick={handleSaveAutomationScript}
+              onClick={handleSaveAutomationConfig}
             >
               {automationSaving ? "Saving..." : "Save"}
             </button>
@@ -204,17 +231,17 @@ export function AutomationSettings() {
             <p className="settings-warning">{automationSaveError || error}</p>
           )}
           <p className="settings-hint" style={{ marginTop: "var(--space-2)" }}>
-            Event shape: `ctx.event.project.*`, `ctx.event.session.*`,
-            `ctx.event.process.*`, and `ctx.event.tool.*` for waiting-input
-            events only.
+            Request body includes `event`, `dryRun`, and `context` with
+            `globalInstructions` and `sessionVariables`.
           </p>
           <p className="settings-hint">
-            Mutating helpers respect Dry Run. `sendCommand("model", "sonnet")`
-            queues `/model sonnet`.
+            Supported response actions include `approve`, `deny`, `answer`,
+            `send-message`, `send-command`, `resume`, and instruction or
+            session-variable updates.
           </p>
           <p className="settings-hint">
-            `ctx.context.*` can modify both global instructions and
-            session-level variables for the current session.
+            Mutating actions still respect Dry Run. Automation-generated queued
+            messages are not re-sent back through the `message-queued` trigger.
           </p>
         </div>
       </div>

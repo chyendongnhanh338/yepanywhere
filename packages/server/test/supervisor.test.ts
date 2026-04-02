@@ -248,6 +248,47 @@ describe("Supervisor", () => {
           ),
         ).toBe(true);
       });
+
+      expect(
+        events.filter((event) => event.type === "session-paused"),
+      ).toHaveLength(1);
+    });
+
+    it("does not emit session-paused when a process is manually aborted", async () => {
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
+
+      const supervisorWithBus = new Supervisor({
+        sdk: mockSdk,
+        idleTimeoutMs: 100,
+        eventBus,
+        onSessionPaused: (event) =>
+          eventBus.emit({
+            type: "session-paused",
+            timestamp: new Date().toISOString(),
+            ...event,
+          }),
+      });
+
+      mockSdk.addScenario(createMockScenario("sess-123", "Hello!"));
+
+      const process = await supervisorWithBus.resumeSession(
+        "sess-123",
+        "/tmp/test",
+        { text: "hi" },
+      );
+
+      await supervisorWithBus.abortProcess(process.id);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(events.some((event) => event.type === "session-aborted")).toBe(
+        true,
+      );
+      expect(events.some((event) => event.type === "session-paused")).toBe(
+        false,
+      );
     });
 
     it("emits message-queued when a message is queued to an active session", async () => {
