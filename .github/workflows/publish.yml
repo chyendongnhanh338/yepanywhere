@@ -23,9 +23,6 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update npm for provenance support
-        run: npm install -g npm@11
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 
