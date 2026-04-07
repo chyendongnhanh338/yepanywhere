@@ -409,5 +409,67 @@ describe("Supervisor", () => {
         reason: "underlying process terminated",
       });
     });
+
+    it("keeps idle sessions owned while the underlying process is still alive", async () => {
+      vi.useFakeTimers();
+      try {
+        let aborted = false;
+
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "idle-alive-session-1",
+              };
+              yield { type: "result", session_id: "idle-alive-session-1" };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        };
+
+        const supervisorWithAliveProcess = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+        });
+
+        const process = await supervisorWithAliveProcess.startSession(
+          "/tmp/test",
+          {
+            text: "Keep this session alive",
+          },
+        );
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(process.state.type).toBe("idle");
+
+        await vi.advanceTimersByTimeAsync(150);
+
+        expect(
+          supervisorWithAliveProcess.getProcessForSession(
+            "idle-alive-session-1",
+          ),
+        ).toBe(process);
+
+        const abortPromise = supervisorWithAliveProcess.abortProcess(process.id);
+        await vi.advanceTimersByTimeAsync(20);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

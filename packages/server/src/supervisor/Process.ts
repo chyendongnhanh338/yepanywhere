@@ -1681,9 +1681,35 @@ export class Process {
 
   private startIdleTimer(): void {
     this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+
+      // State may have changed while the timer was pending.
+      if (this._state.type !== "idle") {
+        return;
+      }
+
+      // Keep ownership while the underlying process is still alive. This lets
+      // long-lived Claude sessions remain reusable instead of decaying into
+      // "external" after the idle timeout.
+      if (this.isProcessAlive === true) {
+        getLogger().debug(
+          {
+            event: "idle_cleanup_deferred",
+            sessionId: this._sessionId,
+            processId: this.id,
+            projectId: this.projectId,
+            idleTimeoutMs: this.idleTimeoutMs,
+          },
+          `Idle cleanup deferred: ${this._sessionId} is still alive`,
+        );
+        this.startIdleTimer();
+        return;
+      }
+
       // Emit completion - Supervisor will clean up
       this.emit({ type: "complete" });
     }, this.idleTimeoutMs);
+    this.idleTimer.unref?.();
   }
 
   private clearIdleTimer(): void {
