@@ -261,8 +261,8 @@ describe("ProjectScanner cache", () => {
       lastActivity: "2025-01-01T00:00:00.000Z",
       provider: "codex" as const,
     };
-    let nextProjects: typeof codexProject[] = [];
-    let cachedProjects: typeof codexProject[] | null = null;
+    let nextProjects: (typeof codexProject)[] = [];
+    let cachedProjects: (typeof codexProject)[] | null = null;
     const codexScanner = {
       listProjects: vi.fn(async () => {
         if (cachedProjects) return cachedProjects;
