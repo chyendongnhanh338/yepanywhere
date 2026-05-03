@@ -1202,7 +1202,9 @@ export class Supervisor {
     // Listen for completion to auto-cleanup, and state changes for process state events
     process.subscribe((event) => {
       if (event.type === "complete") {
-        this.unregisterProcess(process);
+        // Abort the underlying CLI process before unregistering.
+        // Without this, the Claude CLI child process survives and leaks memory.
+        void process.abort().then(() => this.unregisterProcess(process));
       } else if (event.type === "session-id-changed") {
         // Update session→process mapping when temp ID is replaced by real ID from SDK
         // This is critical for ExternalSessionTracker to correctly identify owned sessions
